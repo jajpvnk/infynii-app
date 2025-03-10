@@ -5,7 +5,9 @@
   "main": "index.js",
   "private": true,
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start:app": "nx run infynii:start",
+    "start:app:ios": "nx run infynii:ios",
+    "start:app:android": "nx run infynii:android"
   },
   "keywords": [],
   "author": "",
