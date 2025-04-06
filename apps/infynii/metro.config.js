@@ -17,4 +17,18 @@ config.resolver.nodeModulesPaths = [
   path.resolve(monorepoRoot, "node_modules"),
 ];
 
+// hono/client
+config.resolver.resolveRequest = (context, moduleName, platform) => {
+  if (moduleName === "hono/client") {
+    return {
+      type: "sourceFile",
+      filePath: path.resolve(
+        monorepoRoot,
+        "node_modules/hono/dist/client/index.js"
+      ),
+    };
+  }
+  return context.resolveRequest(context, moduleName, platform);
+};
+
 module.exports = config;
