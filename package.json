@@ -10,7 +10,8 @@
     "app:start:android": "nx run infynii:android",
     "api:dev": "nx run infynii-hono-api:dev",
     "api:build": "nx run infynii-hono-api:build",
-    "build": "nx run-many --target=build --all --verbose"
+    "build": "nx run-many --target=build --all --verbose",
+    "gentypes:api": "supabase gen types typescript --local > ./apps/hono-api/src/db-schema.ts"
   },
   "keywords": [],
   "author": "",
