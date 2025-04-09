@@ -6,7 +6,7 @@ import { handleRoutes } from "./router.js";
 const hostname = process.env.HOST ?? "localhost";
 const port = parseInt(process.env.PORT ?? "8787");
 
-const app = new Hono().basePath("/api/v1");
+const app = new Hono();
 
 handleRoutes(app);
 
