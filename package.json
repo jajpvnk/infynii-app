@@ -5,9 +5,9 @@
   "main": "index.js",
   "private": true,
   "scripts": {
-    "app:start": "nx run infynii:start",
-    "app:start:ios": "nx run infynii:ios",
-    "app:start:android": "nx run infynii:android",
+    "app:dev": "nx run infynii:dev",
+    "app:dev:ios": "nx run infynii:ios",
+    "app:dev:android": "nx run infynii:android",
     "api:dev": "nx run infynii-hono-api:dev",
     "api:build": "nx run infynii-hono-api:build",
     "build": "nx run-many --target=build --all --verbose",

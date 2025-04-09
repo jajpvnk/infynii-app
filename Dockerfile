@@ -14,4 +14,4 @@ FROM base AS hono-api
 COPY --from=build /prod/hono-api /prod/hono-api
 WORKDIR /prod/hono-api
 EXPOSE 8787
-CMD [ "pnpm", "start" ]
+CMD [ "pnpm", "dev" ]
