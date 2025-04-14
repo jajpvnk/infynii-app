@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Context, MiddlewareHandler } from "hono";
 import { env } from "hono/adapter";
 import { getCookie, setCookie } from "hono/cookie";
-import type { Database } from "./db-schema.js";
+import type { Database } from "@jpvnk/infynii-shared";
 
 declare module "hono" {
   interface ContextVariableMap {
@@ -25,6 +25,9 @@ export const supabaseMiddleware = (): MiddlewareHandler => {
     const supabaseEnv = env<TSupabaseEnv>(c);
     const supabaseUrl = supabaseEnv.SUPABASE_URL;
     const supabaseAnonKey = supabaseEnv.SUPABASE_ANON_KEY;
+
+    console.log("supabaseUrl", supabaseUrl);
+    console.log("supabaseAnonKey", supabaseAnonKey);
 
     if (!supabaseUrl) {
       throw new Error("SUPABASE_URL missing!");

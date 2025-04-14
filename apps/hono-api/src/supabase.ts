@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import type { Database } from './db-schema.js'
+import type { Database } from '@jpvnk/infynii-shared'
 
 const supabaseAdmin = createClient<Database>(
   process.env.SUPABASE_URL!,

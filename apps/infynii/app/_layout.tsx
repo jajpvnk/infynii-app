@@ -5,13 +5,14 @@ import {
 } from "@react-navigation/native";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import {
   useFonts,
   Inter_400Regular,
   Inter_600SemiBold,
   Inter_700Bold,
 } from "@expo-google-fonts/inter";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 import "react-native-reanimated";
 
@@ -61,13 +62,15 @@ function RootLayoutNav() {
   const colorScheme = useColorScheme();
 
   return (
-    <HonoProvider>
-      <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
-        <Stack>
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="modal" options={{ presentation: "modal" }} />
-        </Stack>
-      </ThemeProvider>
-    </HonoProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <HonoProvider>
+        <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
+          <Stack>
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen name="modal" options={{ presentation: "modal" }} />
+          </Stack>
+        </ThemeProvider>
+      </HonoProvider>
+    </GestureHandlerRootView>
   );
 }
