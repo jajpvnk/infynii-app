@@ -5,9 +5,13 @@
   "main": "index.js",
   "private": true,
   "scripts": {
-    "start:app": "nx run infynii:start",
-    "start:app:ios": "nx run infynii:ios",
-    "start:app:android": "nx run infynii:android"
+    "app:dev": "nx run infynii:dev",
+    "app:dev:ios": "nx run infynii:ios",
+    "app:dev:android": "nx run infynii:android",
+    "api:dev": "nx run infynii-hono-api:dev",
+    "api:build": "nx run infynii-hono-api:build",
+    "build": "nx run-many --target=build --all --verbose",
+    "gentypes": "supabase gen types typescript --local > ./packages/shared/src/db-schema.ts"
   },
   "keywords": [],
   "author": "",
