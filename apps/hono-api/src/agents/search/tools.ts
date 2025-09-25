@@ -3,13 +3,17 @@ import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import { tool } from "@langchain/core/tools";
 import { randomUUID } from "crypto";
 import { AIMessage, ToolMessage } from "@langchain/core/messages";
-import type { TTavilySearchResult, TTavilySearchResultRaw } from "@jpvnk/infynii-shared";
+import type {
+  TTavilySearchResult,
+  TTavilySearchResultRaw,
+} from "@jpvnk/infynii-shared";
 import { GEMINI_MODEL_CONFIG, MAX_SEARCH_RESULTS } from "./constants.js";
 
 export const rawModel = new ChatGoogleGenerativeAI(GEMINI_MODEL_CONFIG);
 
 export const searchTool = tool(
   async ({ query }: { query: string }) => {
+    // tavily api
     const resp = await fetch("https://api.tavily.com/search", {
       method: "POST",
       headers: {
