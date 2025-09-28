@@ -26,8 +26,8 @@ export const SearchResultCard = ({
       <Text style={styles.searchResultUrl} numberOfLines={1}>
         {result.url}
       </Text>
-      <Text style={styles.searchResultContent} numberOfLines={3}>
-        {result.content}
+      <Text style={styles.searchResultPreview} numberOfLines={3}>
+        {result.preview}
       </Text>
       <View style={styles.actionButtonContainer}>
         <TouchableOpacity
@@ -73,11 +73,12 @@ const styles = StyleSheet.create({
     color: "#666",
     marginBottom: 8,
   },
-  searchResultContent: {
+  searchResultPreview: {
     fontSize: 14,
     fontFamily: "Inter_400Regular",
     color: "#333",
     lineHeight: 20,
+    marginBottom: 8,
   },
   actionButtonContainer: {
     marginTop: 12,
