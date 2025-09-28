@@ -299,8 +299,8 @@ const createAfterSearchRouter = (searchId: string) => {
           search_id: searchId,
           title: item.title,
           url: item.url,
-          content: item.content,
           score: item.score,
+          preview: item.preview,
         })));
 
       if (insertItemsError) {

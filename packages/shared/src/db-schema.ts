@@ -183,29 +183,32 @@ export type Database = {
       }
       searches_results: {
         Row: {
-          content: string | null
           created_at: string
           id: string
+          preview: string | null
           score: number | null
           search_id: string | null
+          summary: string | null
           title: string | null
           url: string | null
         }
         Insert: {
-          content?: string | null
           created_at?: string
           id?: string
+          preview?: string | null
           score?: number | null
           search_id?: string | null
+          summary?: string | null
           title?: string | null
           url?: string | null
         }
         Update: {
-          content?: string | null
           created_at?: string
           id?: string
+          preview?: string | null
           score?: number | null
           search_id?: string | null
+          summary?: string | null
           title?: string | null
           url?: string | null
         }
