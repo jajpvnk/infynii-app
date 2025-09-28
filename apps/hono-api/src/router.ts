@@ -2,9 +2,12 @@ import { Hono } from "hono";
 
 import { getSupabase, supabaseMiddleware } from "./middleware.js";
 import searchAgent from "./agents/search/index.js";
+import summarizeAgent from "./agents/summarize/index.js";
 import { streamText } from "hono/streaming";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
+import type { TSummarizeResponse } from "@jpvnk/infynii-shared";
+import { SummarizeGraphStatus } from "@jpvnk/infynii-shared/server";
 
 export const handleRoutes = (app: Hono) =>
   app
@@ -136,6 +139,108 @@ export const handleRoutes = (app: Hono) =>
         } catch (error) {
           console.error("Error retrieving search result:", error);
           return c.json({ error: "Failed to retrieve search result" }, 500);
+        }
+      }
+    )
+    .post(
+      "/search-results/:id/summarize",
+      supabaseMiddleware(),
+      zValidator(
+        "param",
+        z.object({
+          id: z.string(),
+        })
+      ),
+      async (c) => {
+        const supabase = getSupabase(c);
+        const resultId = c.req.valid("param").id;
+
+        try {
+          // Get the search result to retrieve the URL and basic info
+          const { data: searchResult, error: searchError } = await supabase
+            .from("searches_results")
+            .select("url, title, preview")
+            .eq("id", resultId)
+            .single();
+
+          if (searchError) {
+            console.error("Error retrieving search result:", searchError);
+            return c.json({ error: searchError.message }, 500);
+          }
+
+          if (!searchResult?.url) {
+            console.error("No URL found for this search result");
+            return c.json({ error: "No URL found for this search result" }, 404);
+          }
+
+          return streamText(c, async (stream) => {
+            await summarizeAgent({
+              resultId: resultId,
+              url: searchResult.url!,
+              stream,
+            });
+          });
+
+          // test response
+          // const tempResponse: TSummarizeResponse = {
+          //   messages: [
+          //     {
+          //       type: "ai",
+          //       content: "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
+          //       id: resultId,
+          //       timestamp: new Date().toISOString(),
+          //     },
+          //   ],
+          //   status: SummarizeGraphStatus.FINISHED,
+          //   resultId: resultId,
+          // };
+
+          // await new Promise((resolve) => setTimeout(resolve, 5000));
+
+          // return c.json(tempResponse);
+        } catch (error) {
+          console.error("Error retrieving content for summarization:", error);
+          return c.json({ error: "Failed to retrieve content for summarization" }, 500);
+        }
+      }
+    )
+    .patch(
+      "/search-results/:id/summary",
+      supabaseMiddleware(),
+      zValidator(
+        "param",
+        z.object({
+          id: z.string(),
+        })
+      ),
+      zValidator(
+        "json",
+        z.object({
+          summary: z.string(),
+        })
+      ),
+      async (c) => {
+        const supabase = getSupabase(c);
+        const resultId = c.req.valid("param").id;
+        const { summary } = c.req.valid("json");
+
+        try {
+          const { data, error } = await supabase
+            .from("searches_results")
+            .update({ summary })
+            .eq("id", resultId)
+            .select()
+            .single();
+
+          if (error) {
+            console.error("Error saving summary:", error);
+            return c.json({ error: error.message }, 500);
+          }
+
+          return c.json({ success: true, data });
+        } catch (error) {
+          console.error("Error saving summary:", error);
+          return c.json({ error: "Failed to save summary" }, 500);
         }
       }
     );
