@@ -9,6 +9,28 @@ import type {
 } from "@jpvnk/infynii-shared";
 import { GEMINI_MODEL_CONFIG, MAX_SEARCH_RESULTS } from "./constants.js";
 
+// Function to create preview text from content
+const createPreviewText = (content: string, maxLength: number = 150): string => {
+  if (!content) return "";
+  
+  // Clean up the content by removing extra whitespace and newlines
+  const cleanedContent = content.replace(/\s+/g, ' ').trim();
+  
+  if (cleanedContent.length <= maxLength) {
+    return cleanedContent;
+  }
+  
+  // Find the last complete word within the limit
+  const truncated = cleanedContent.substring(0, maxLength);
+  const lastSpaceIndex = truncated.lastIndexOf(' ');
+  
+  if (lastSpaceIndex > maxLength * 0.8) { // If we can find a good break point
+    return truncated.substring(0, lastSpaceIndex) + '...';
+  }
+  
+  return truncated + '...';
+};
+
 export const rawModel = new ChatGoogleGenerativeAI(GEMINI_MODEL_CONFIG);
 
 export const searchTool = tool(
@@ -32,7 +54,14 @@ export const searchTool = tool(
     }
 
     const data = await resp.json();
-    const results: TTavilySearchResult[] = data?.results ?? [];
+    const rawResults: TTavilySearchResultRaw[] = data?.results ?? [];
+    
+    // Transform raw results to include preview text
+    const results: TTavilySearchResult[] = rawResults.map((result) => ({
+      id: randomUUID(),
+      ...result,
+      preview: createPreviewText(result.content),
+    }));
 
     return results;
   },
@@ -56,6 +85,7 @@ export const createSearchToolMessages = (
     title: result.title,
     url: result.url,
     score: result.score,
+    preview: result.preview,
   }));
   return {
     messages: [
