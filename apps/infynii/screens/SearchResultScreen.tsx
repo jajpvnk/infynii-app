@@ -10,12 +10,12 @@ import {
   Text,
   ScrollView,
   Alert,
-  Linking,
   TouchableOpacity,
   ActivityIndicator,
 } from "react-native";
 import { StyleSheet } from "react-native";
 import { useLocalSearchParams, Stack } from "expo-router";
+import * as WebBrowser from "expo-web-browser";
 import { useHonoClient } from "@/context/HonoProvider";
 import { Database, type TSummarizeResponse } from "@jpvnk/infynii-shared";
 import { processNDJSONResponse } from "@/helpers/ndjson";
@@ -296,16 +296,19 @@ export default function SearchResultScreen() {
       return;
     }
 
-    const url = state.result?.url;
-    if (!url) return;
+    const url = state.result.url;
+    if (!url) {
+      return;
+    }
 
     try {
-      const supported = await Linking.canOpenURL(url);
-      if (supported) {
-        await Linking.openURL(url);
-      } else {
-        Alert.alert("Error", "Cannot open this URL");
-      }
+      await WebBrowser.openBrowserAsync(url, {
+        enableDefaultShareMenuItem: true,
+        dismissButtonStyle: "close",
+        presentationStyle:
+          WebBrowser.WebBrowserPresentationStyle?.PAGE_SHEET ?? 0,
+        showTitle: true,
+      });
     } catch (error) {
       console.error("Error opening URL:", error);
       Alert.alert("Error", "Failed to open URL");
