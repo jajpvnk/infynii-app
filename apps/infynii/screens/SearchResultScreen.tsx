@@ -18,7 +18,8 @@ import { StyleSheet } from "react-native";
 import { useLocalSearchParams, Stack } from "expo-router";
 import { useHonoClient } from "@/context/HonoProvider";
 import { Database, type TSummarizeResponse } from "@jpvnk/infynii-shared";
-import { useSummarizationStream } from "@/hooks/useSummarizationStream";
+import { processNDJSONResponse } from "@/helpers/ndjson";
+import { makeid } from "@/helpers";
 
 const ANIMATION_INTERVAL = 100;
 
@@ -46,8 +47,7 @@ export default function SearchResultScreen() {
 
   const client = useHonoClient();
 
-  // Streaming functionality
-  const { processSummarizationStream } = useSummarizationStream();
+  // Streaming functionality uses shared NDJSON helper
 
   // Combined state for search result and summarization
   const [state, setState] = useState<TScreenState>({
@@ -77,7 +77,6 @@ export default function SearchResultScreen() {
 
   const updateSummarization = useCallback((response: TSummarizeResponse) => {
     setState((prev) => {
-      console.log("response", response);
       return {
         ...prev,
         summarization: {
@@ -103,25 +102,25 @@ export default function SearchResultScreen() {
         param: { id: idToUse },
       });
 
-      await processSummarizationStream({
+      await processNDJSONResponse<TSummarizeResponse>(
         response,
-        onData: updateSummarization,
-        onError: (errorMessage) => {
+        updateSummarization,
+        (errorMessage) => {
           setState((prev) => ({
             ...prev,
             summarizationError: errorMessage,
             isSummarizing: false,
           }));
         },
-        onComplete: () => {
+        () => {
           setState((prev) => ({
             ...prev,
             isSummarizing: false,
           }));
-        },
-      });
+        }
+      );
     },
-    [client, processSummarizationStream, updateSummarization]
+    [client, updateSummarization]
   );
 
   const saveSummary = useCallback(
@@ -265,7 +264,7 @@ export default function SearchResultScreen() {
               resultId: searchResult.id,
               messages: [
                 {
-                  id: "noid",
+                  id: makeid(6),
                   type: "ai",
                   content: summaryText,
                   timestamp: new Date().toUTCString(),

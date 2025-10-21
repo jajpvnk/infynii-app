@@ -43,7 +43,6 @@ const handleSummarization = async ({
 
     for (const update of updates) {
       const response = createSummarizationResponse(update, resultId);
-      console.log("response:", response);
       await stream.write(JSON.stringify(response) + "\n");
     }
   }
