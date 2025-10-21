@@ -117,7 +117,7 @@ const handleFrequencySelection = async ({
   };
 
   const response = createQueryProcessingResponse(update, searchIdToUse);
-  await stream.write(JSON.stringify(response));
+  await stream.write(JSON.stringify(response) + "\n");
 };
 
 // Query processing handler
@@ -150,7 +150,7 @@ const handleQueryProcessing = async ({
 
     for (const update of updates) {
       const response = createQueryProcessingResponse(update, searchIdToUse);
-      await stream.write(JSON.stringify(response));
+      await stream.write(JSON.stringify(response) + "\n");
     }
   }
 };

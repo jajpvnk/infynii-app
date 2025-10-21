@@ -9,9 +9,9 @@ import {
   type TTavilySearchResult,
 } from "@jpvnk/infynii-shared";
 import FrequencyBottomSheet from "@/components/FrequencyBottomSheet";
-import { useStreamResponse } from "@/hooks/useStreamResponse";
-import { useChat } from "@/hooks/useChat";
-import { formatTimestamp } from "@/utils/chatUtils";
+import { processNDJSONResponse } from "@/helpers/ndjson";
+import { formatTimestamp, createUserMessage } from "@/utils/chatUtils";
+import type { TSearchChatResponse } from "@jpvnk/infynii-hono-api/dist/agents/search";
 import { ToolMessage } from "@/components/chat/ToolMessage";
 import { UserMessage } from "@/components/chat/UserMessage";
 import {
@@ -24,21 +24,49 @@ import { MessageInput } from "@/components/chat/MessageInput";
 
 type TFrequency = Database["public"]["Tables"]["search_frequencies"]["Row"];
 
+type TSearchState = {
+  status?: TSearchChatResponse["status"];
+  searchId?: TSearchChatResponse["searchId"];
+  messages?: TSearchChatResponse["messages"];
+  currentQuery?: TSearchChatResponse["currentQuery"];
+  alternativeQueries?: TSearchChatResponse["alternativeQueries"];
+  searchAttempts?: TSearchChatResponse["searchAttempts"];
+  currentSearch?: TSearchChatResponse["currentSearch"];
+};
+
 const ChatScreen = () => {
   const client = useHonoClient();
   const [newMessage, setNewMessage] = useState("");
   const flatListRef = useRef<FlatList>(null);
   const [frequencies, setFrequencies] = useState<TFrequency[]>([]);
-  const { processStreamResponse } = useStreamResponse();
-  const {
-    search,
-    error,
-    isLoading,
-    setError,
-    setIsLoading,
-    updateSearchState,
-    addUserMessage,
-  } = useChat();
+  // Local chat state and helpers (moved from useChat)
+  const [search, setSearch] = useState<TSearchState>();
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const updateSearchState = useCallback((response: TSearchChatResponse) => {
+    setSearch((prev) => {
+      const newMessages = [...response.messages, ...(prev?.messages ?? [])];
+      return {
+        status: response.status,
+        currentQuery: response.currentQuery,
+        alternativeQueries: response.alternativeQueries,
+        searchAttempts: response.searchAttempts,
+        currentSearch: response.currentSearch,
+        searchId: response.searchId,
+        messages: newMessages,
+      };
+    });
+  }, []);
+
+  const addUserMessage = useCallback((content: string) => {
+    setSearch((prev) => ({
+      messages: [
+        createUserMessage(content, prev?.messages?.length ?? 0),
+        ...(prev?.messages ?? []),
+      ],
+    }));
+  }, []);
 
   // Bottom sheet state
   const bottomSheetRef = useRef<BottomSheet>(null);
@@ -66,23 +94,17 @@ const ChatScreen = () => {
         },
       });
 
-      await processStreamResponse({
-        response: res,
-        onData: updateSearchState,
-        onError: (errorMessage) => {
-          setError(errorMessage);
-          setIsLoading(false);
-        },
-        onComplete: () => {
-          setIsLoading(false);
-          handleCloseBottomSheet();
-        },
+      await processNDJSONResponse(res, updateSearchState, (errorMessage) => {
+        setError(errorMessage);
+        setIsLoading(false);
+      }, () => {
+        setIsLoading(false);
+        handleCloseBottomSheet();
       });
     },
     [
       handleCloseBottomSheet,
       search,
-      processStreamResponse,
       updateSearchState,
       setError,
       setIsLoading,
@@ -186,21 +208,15 @@ const ChatScreen = () => {
       },
     });
 
-    await processStreamResponse({
-      response: res,
-      onData: updateSearchState,
-      onError: (errorMessage) => {
-        setError(errorMessage);
-        setIsLoading(false);
-      },
-      onComplete: () => {
-        setIsLoading(false);
-      },
+    await processNDJSONResponse(res, updateSearchState, (errorMessage) => {
+      setError(errorMessage);
+      setIsLoading(false);
+    }, () => {
+      setIsLoading(false);
     });
   }, [
     search,
     addUserMessage,
-    processStreamResponse,
     updateSearchState,
     setError,
     setIsLoading,
