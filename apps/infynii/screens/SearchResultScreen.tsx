@@ -8,10 +8,11 @@ import React, {
 import {
   View,
   Text,
-  ScrollView,
+  FlatList,
   Alert,
   TouchableOpacity,
   ActivityIndicator,
+  LayoutChangeEvent,
 } from "react-native";
 import { StyleSheet } from "react-native";
 import { useLocalSearchParams, Stack } from "expo-router";
@@ -19,7 +20,7 @@ import * as WebBrowser from "expo-web-browser";
 import { useHonoClient } from "@/context/HonoProvider";
 import { Database, type TSummarizeResponse } from "@jpvnk/infynii-shared";
 import { processNDJSONResponse } from "@/helpers/ndjson";
-import { makeid } from "@/helpers";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 const ANIMATION_INTERVAL = 100;
 
@@ -35,25 +36,58 @@ type TScreenState = {
   result: TSearchResult | null;
   isLoadingResult: boolean;
   resultError: string | null;
-  summarization: TSummarization | undefined;
-  isSummarizing: boolean;
-  summarizationError: string | null;
 };
 
-export default function SearchResultScreen() {
-  const { id } = useLocalSearchParams<{
-    id: string;
-  }>();
+type TListItem =
+  | { type: "header"; data: TSearchResult }
+  | { type: "summary"; data: { resultId: string } };
 
+type TSearchResultHeaderProps = {
+  result: TSearchResult | null;
+  onOpenUrl: () => void;
+};
+
+function SearchResultHeader({ result, onOpenUrl }: TSearchResultHeaderProps) {
+  return (
+    <View style={styles.headerSection}>
+      <Text style={styles.title}>{result?.title ?? ""}</Text>
+      <TouchableOpacity style={styles.urlButton} onPress={onOpenUrl}>
+        <Text style={styles.urlText}>{result?.url ?? ""}</Text>
+      </TouchableOpacity>
+      <View style={styles.scoreContainer}>
+        <Text style={styles.scoreLabel}>Relevance Score:</Text>
+        <Text style={styles.scoreValue}>
+          {((result?.score ?? 0) * 100).toFixed(1)}%
+        </Text>
+      </View>
+
+      {/* Open Article Button */}
+      <TouchableOpacity style={styles.openButton} onPress={onOpenUrl}>
+        <Text style={styles.openButtonText}>Open Full Article</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+type TSearchResultSummaryProps = {
+  resultId: string;
+  flatListRef: React.RefObject<FlatList>;
+};
+
+const CONTENT_HEIGHT = 100;
+const SCROLL_TIMEOUT = 100;
+
+function SearchResultSummary({
+  resultId,
+  flatListRef,
+}: TSearchResultSummaryProps) {
   const client = useHonoClient();
 
-  // Streaming functionality uses shared NDJSON helper
-
-  // Combined state for search result and summarization
-  const [state, setState] = useState<TScreenState>({
-    result: null,
-    isLoadingResult: true,
-    resultError: null,
+  const [state, setState] = useState<{
+    summarization: TSummarization | undefined;
+    isSummarizing: boolean;
+    summarizationError: string | null;
+  }>({
     summarization: undefined,
     isSummarizing: false,
     summarizationError: null,
@@ -63,17 +97,11 @@ export default function SearchResultScreen() {
     displayedText: "",
     isAnimating: false,
   });
-  const currentWordIndex = useRef(0);
-  const previousTextLengthRef = useRef(0);
-  const fullText = useMemo(() => {
-    return state.summarization?.messages
-      ? state.summarization.messages
-          .map((message) => message.content)
-          .join("\n")
-      : "";
-  }, [state.summarization?.messages]);
+  const summaryWordsAnimationIndex = useRef(0);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  const words = useMemo(() => fullText.split(" "), [fullText]);
+  const incHeightRef = useRef(1);
+  const [contentHeight, setContentHeight] = useState(CONTENT_HEIGHT);
 
   const updateSummarization = useCallback((response: TSummarizeResponse) => {
     setState((prev) => {
@@ -143,52 +171,100 @@ export default function SearchResultScreen() {
     [client]
   );
 
+  const fullText = useMemo(() => {
+    return state.summarization?.messages
+      ? state.summarization.messages.reduce(
+          (acc, message) => acc + message.content,
+          ""
+        )
+      : "";
+  }, [state.summarization?.messages]);
+
   // Animate the text
   useEffect(() => {
-    if (!animating.isAnimating) {
+    if (!animating.isAnimating || !fullText) {
       return;
     }
-    const interval = setInterval(() => {
-      currentWordIndex.current++;
-      if (currentWordIndex.current >= words.length) {
-        setAnimating((prev) => ({ ...prev, isAnimating: false }));
-        clearInterval(interval);
+
+    const words = fullText.split(" ");
+
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+
+    intervalRef.current = setInterval(() => {
+      const nextIndex = summaryWordsAnimationIndex.current + 1;
+
+      if (nextIndex >= words.length) {
+        setAnimating((prev) => ({
+          ...prev,
+          displayedText: fullText,
+          isAnimating: false,
+        }));
+        summaryWordsAnimationIndex.current = words.length;
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
+        }
+        return;
       }
+
+      summaryWordsAnimationIndex.current = nextIndex;
+
+      const nextText = words.slice(0, nextIndex).join(" ");
+
       setAnimating((prev) => ({
         ...prev,
-        displayedText: words.slice(0, currentWordIndex.current).join(" "),
+        displayedText: nextText,
       }));
     }, ANIMATION_INTERVAL);
-    return () => clearInterval(interval);
-  }, [animating.isAnimating, words]);
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+  }, [fullText, animating.isAnimating]);
 
   // Start animation when new messages arrive or content length changes
   useEffect(() => {
     if (!fullText) {
-      setAnimating({ displayedText: "", isAnimating: false });
-      currentWordIndex.current = 0;
-      previousTextLengthRef.current = 0;
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+      summaryWordsAnimationIndex.current = 0;
+      setAnimating((prev) => ({
+        ...prev,
+        displayedText: "",
+        isAnimating: false,
+      }));
       return;
     }
 
-    const currentLength = fullText.length;
-    const previousLength = previousTextLengthRef.current;
-
-    // If text is completely new (previousLength was 0 or text shrunk), restart from beginning
-    if (previousLength === 0 || currentLength < previousLength) {
-      // New summarization or text was cleared - restart animation
-      currentWordIndex.current = 0;
-      setAnimating({ displayedText: "", isAnimating: true });
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
     }
-
-    // If text grew (streaming), animation will automatically continue with updated words array
-    // We don't need to do anything here - the animation effect handles the new words
-    previousTextLengthRef.current = currentLength;
+    summaryWordsAnimationIndex.current = 0;
+    setAnimating((prev) => ({ ...prev, displayedText: "", isAnimating: true }));
   }, [fullText]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+  }, []);
 
   // Save summary when summarization is complete
   useEffect(() => {
-    if (!id) {
+    if (!resultId) {
       return;
     }
     if (state.isSummarizing || !state.summarization?.messages) {
@@ -199,9 +275,99 @@ export default function SearchResultScreen() {
       .join("\n");
 
     if (fullText) {
-      saveSummary(id, fullText);
+      saveSummary(resultId, fullText);
     }
-  }, [state.isSummarizing, state.summarization?.messages, id, saveSummary]);
+  }, [
+    state.isSummarizing,
+    state.summarization?.messages,
+    resultId,
+    saveSummary,
+  ]);
+
+  // Start summarization when component mounts or resultId changes
+  useEffect(() => {
+    if (resultId) {
+      summarizeResult(resultId);
+    }
+  }, [resultId, summarizeResult]);
+
+  const retrySummarization = useCallback(() => {
+    summarizeResult(resultId);
+  }, [summarizeResult, resultId]);
+
+  const handleTextLayout = useCallback((event: LayoutChangeEvent) => {
+    const { height: currentContentHeight } = event.nativeEvent.layout;
+    const d = currentContentHeight / (CONTENT_HEIGHT * incHeightRef.current);
+    if (d > 1) {
+      incHeightRef.current = incHeightRef.current + 1;
+      setContentHeight(CONTENT_HEIGHT * incHeightRef.current);
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: true });
+      }, SCROLL_TIMEOUT);
+    }
+  }, []);
+
+  const handleContentLayout = useCallback((event: LayoutChangeEvent) => {
+    const { height: currentContentHeight } = event.nativeEvent.layout;
+    console.log("currentContentHeight", currentContentHeight);
+  }, []);
+
+  return (
+    <View style={styles.summarySection}>
+      <Text style={styles.sectionTitle}>Content Summary</Text>
+
+      {state.isSummarizing && !state.summarization?.messages && (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="small" color="#007AFF" />
+          <Text style={styles.loadingText}>Generating summary...</Text>
+        </View>
+      )}
+
+      {state.summarizationError && (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>
+            Failed to generate summary: {state.summarizationError}
+          </Text>
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={retrySummarization}
+          >
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {state.summarization?.messages && (
+        <View
+          style={[styles.summaryContainer, { minHeight: contentHeight }]}
+          onLayout={handleTextLayout}
+        >
+          <Text style={styles.summaryContent}>{animating.displayedText}</Text>
+        </View>
+      )}
+
+      {state.isSummarizing && state.summarization?.messages && (
+        <View style={styles.streamingIndicator}>
+          <ActivityIndicator size="small" color="#007AFF" />
+        </View>
+      )}
+    </View>
+  );
+}
+
+export default function SearchResultScreen() {
+  const { id } = useLocalSearchParams<{
+    id: string;
+  }>();
+
+  const client = useHonoClient();
+  const flatListRef = useRef<FlatList>(null);
+  // State for search result only
+  const [state, setState] = useState<TScreenState>({
+    result: null,
+    isLoadingResult: true,
+    resultError: null,
+  });
 
   // Fetch search result
   useEffect(() => {
@@ -241,41 +407,6 @@ export default function SearchResultScreen() {
           result: searchResult,
           isLoadingResult: false,
         }));
-
-        // Check if summary already exists
-        if (searchResult.summary) {
-          const summaryText = searchResult.summary ?? "";
-          const summaryWords = summaryText.split(" ");
-
-          // Set current word index to the end so animation doesn't restart
-          currentWordIndex.current = summaryWords.length;
-          previousTextLengthRef.current = summaryText.length;
-
-          // Display full text immediately without animation
-          setAnimating({
-            isAnimating: false,
-            displayedText: summaryText,
-          });
-
-          setState((prev) => ({
-            ...prev,
-            summarization: {
-              status: "finished",
-              resultId: searchResult.id,
-              messages: [
-                {
-                  id: makeid(6),
-                  type: "ai",
-                  content: summaryText,
-                  timestamp: new Date().toUTCString(),
-                },
-              ],
-            },
-          }));
-        } else {
-          // Start new summarization if no summary exists
-          summarizeResult(searchResult.id);
-        }
       } catch (e) {
         console.error("Failed to fetch search result", e);
         setState((prev) => ({
@@ -285,11 +416,7 @@ export default function SearchResultScreen() {
         }));
       }
     })();
-  }, [id, client, summarizeResult]);
-
-  const retrySummarization = useCallback(() => {
-    summarizeResult(id);
-  }, [summarizeResult, id]);
+  }, [id, client]);
 
   const handleOpenUrl = async () => {
     if (!state.result?.url) {
@@ -315,6 +442,24 @@ export default function SearchResultScreen() {
     }
   };
 
+  const listData = useMemo<TListItem[]>(() => {
+    if (!state.result) {
+      return [];
+    }
+    return [{ type: "summary", data: { resultId: state.result.id } }];
+  }, [state.result]);
+
+  const renderItem = useCallback(({ item }: { item: TListItem }) => {
+    if (item.type === "summary") {
+      return (
+        <SearchResultSummary
+          resultId={item.data.resultId}
+          flatListRef={flatListRef}
+        />
+      );
+    }
+    return null;
+  }, []);
 
   if (state.isLoadingResult) {
     return (
@@ -349,7 +494,7 @@ export default function SearchResultScreen() {
   }
 
   return (
-    <>
+    <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
       <Stack.Screen
         options={{
           title:
@@ -359,81 +504,29 @@ export default function SearchResultScreen() {
           headerBackTitle: "Back",
         }}
       />
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.contentContainer}
-      >
-        {/* Header Section */}
-        <View style={styles.headerSection}>
-          <Text style={styles.title}>{state.result?.title ?? ""}</Text>
-          <TouchableOpacity style={styles.urlButton} onPress={handleOpenUrl}>
-            <Text style={styles.urlText}>{state.result?.url ?? ""}</Text>
-          </TouchableOpacity>
-          <View style={styles.scoreContainer}>
-            <Text style={styles.scoreLabel}>Relevance Score:</Text>
-            <Text style={styles.scoreValue}>
-              {((state.result?.score ?? 0) * 100).toFixed(1)}%
-            </Text>
-          </View>
-
-          {/* Open Article Button */}
-          <TouchableOpacity style={styles.openButton} onPress={handleOpenUrl}>
-            <Text style={styles.openButtonText}>Open Full Article</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Content Summary Section */}
-        <View style={styles.summarySection}>
-          <Text style={styles.sectionTitle}>Content Summary</Text>
-
-          {state.isSummarizing && !state.summarization?.messages && (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="small" color="#007AFF" />
-              <Text style={styles.loadingText}>Generating summary...</Text>
-            </View>
-          )}
-
-          {state.summarizationError && (
-            <View style={styles.errorContainer}>
-              <Text style={styles.errorText}>
-                Failed to generate summary: {state.summarizationError}
-              </Text>
-              <TouchableOpacity
-                style={styles.retryButton}
-                onPress={retrySummarization}
-              >
-                <Text style={styles.retryButtonText}>Retry</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {state.summarization?.messages && (
-            <View style={styles.summaryContainer}>
-              <Text style={styles.summaryContent}>
-                {animating.displayedText}
-              </Text>
-            </View>
-          )}
-
-          {state.isSummarizing && state.summarization?.messages && (
-            <View style={styles.streamingIndicator}>
-              <ActivityIndicator size="small" color="#007AFF" />
-            </View>
-          )}
-        </View>
-      </ScrollView>
-    </>
+      <FlatList
+        ref={flatListRef}
+        data={listData}
+        renderItem={renderItem}
+        keyExtractor={(item) => item.type}
+        contentContainerStyle={{ backgroundColor: "blue" }}
+        ListHeaderComponent={
+          <SearchResultHeader result={state.result} onOpenUrl={handleOpenUrl} />
+        }
+        style={{ flex: 1, backgroundColor: "green" }}
+        // maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+        scrollEventThrottle={16}
+        onContentSizeChange={() => {
+          setTimeout(() => {
+            flatListRef.current?.scrollToEnd({ animated: true });
+          }, SCROLL_TIMEOUT);
+        }}
+      />
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#fff",
-  },
-  contentContainer: {
-    paddingBottom: 20,
-  },
   headerSection: {
     padding: 16,
     borderBottomWidth: 1,
@@ -456,9 +549,6 @@ const styles = StyleSheet.create({
     color: "#FF3B30",
     textAlign: "center",
     fontFamily: "Inter_400Regular",
-  },
-  header: {
-    marginBottom: 24,
   },
   title: {
     fontSize: 24,
@@ -531,16 +621,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
   },
-  summaryContainer: {
-    marginBottom: 16,
-  },
+  summaryContainer: {},
   summaryContent: {
     fontSize: 16,
     lineHeight: 24,
     color: "#1A1A1A",
     textAlign: "justify",
     fontFamily: "Inter_400Regular",
-    marginBottom: 8,
   },
   streamingIndicator: {
     flexDirection: "row",
