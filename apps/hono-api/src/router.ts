@@ -170,37 +170,44 @@ export const handleRoutes = (app: Hono) =>
 
           if (!searchResult?.url) {
             console.error("No URL found for this search result");
-            return c.json({ error: "No URL found for this search result" }, 404);
+            return c.json(
+              { error: "No URL found for this search result" },
+              404
+            );
           }
 
-          return streamText(c, async (stream) => {
-            await summarizeAgent({
-              resultId: resultId,
-              url: searchResult.url!,
-              stream,
-            });
-          });
+          // return streamText(c, async (stream) => {
+          //   await summarizeAgent({
+          //     resultId: resultId,
+          //     url: searchResult.url!,
+          //     stream,
+          //   });
+          // });
 
           // test response
-          // const tempResponse: TSummarizeResponse = {
-          //   messages: [
-          //     {
-          //       type: "ai",
-          //       content: "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
-          //       id: resultId,
-          //       timestamp: new Date().toISOString(),
-          //     },
-          //   ],
-          //   status: SummarizeGraphStatus.FINISHED,
-          //   resultId: resultId,
-          // };
+          const tempResponse: TSummarizeResponse = {
+            messages: [
+              {
+                type: "ai",
+                content:
+                  "According to ING's economic and financial analysis, despite a framework agreement between the EU and US, the EU is expected to take a direct GDP hit of -0.3% due to Trump's tariffs. While export front-loading helped sustain levels early in 2025, exports are expected to slow as tariffs take hold. The agreement includes a 15% blanket tariff on the most-favoured nation rate for goods not impacted by sectoral tariffs, with some tariffs being significantly more punitive, including 50% duties on steel, aluminium, and copper products. Uncertainty persists due to the evolving scope of sector tariffs and exemptions, complicating compliance. While the direct exposure to the US market amounts to roughly 1.9% of EU GDP, an 18% tariff could reduce EU GDP by approximately 0.33% in the coming two years. The economic fallout could be amplified through indirect channels, such as disrupted production and weakened demand for European exports. In the long run, the direct impact on EU GDP could rise to 0.86%. According to ING's economic and financial analysis, despite a framework agreement between the EU and US, the EU is expected to take a direct GDP hit of -0.3% due to Trump's tariffs. While export front-loading helped sustain levels early in 2025, exports are expected to slow as tariffs take hold. The agreement includes a 15% blanket tariff on the most-favoured nation rate for goods not impacted by sectoral tariffs, with some tariffs being significantly more punitive, including 50% duties on steel, aluminium, and copper products. Uncertainty persists due to the evolving scope of sector tariffs and exemptions, complicating compliance. While the direct exposure to the US market amounts to roughly 1.9% of EU GDP, an 18% tariff could reduce EU GDP by approximately 0.33% in the coming two years. The economic fallout could be amplified through indirect channels, such as disrupted production and weakened demand for European exports. In the long run, the direct impact on EU GDP could rise to 0.86%.",
+                id: resultId,
+                timestamp: new Date().toISOString(),
+              },
+            ],
+            status: SummarizeGraphStatus.FINISHED,
+            resultId: resultId,
+          };
 
-          // await new Promise((resolve) => setTimeout(resolve, 5000));
+          await new Promise((resolve) => setTimeout(resolve, 1000));
 
-          // return c.json(tempResponse);
+          return c.json(tempResponse);
         } catch (error) {
           console.error("Error retrieving content for summarization:", error);
-          return c.json({ error: "Failed to retrieve content for summarization" }, 500);
+          return c.json(
+            { error: "Failed to retrieve content for summarization" },
+            500
+          );
         }
       }
     )
