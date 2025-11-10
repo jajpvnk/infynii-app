@@ -14,8 +14,6 @@ import {
 } from "@expo-google-fonts/inter";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 
-import "react-native-reanimated";
-
 import { useColorScheme } from "@/components/useColorScheme";
 
 import HonoProvider from "@/context/HonoProvider";
