@@ -8,7 +8,7 @@ import React, {
 import {
   View,
   Text,
-  FlatList,
+  ScrollView,
   Alert,
   TouchableOpacity,
   ActivityIndicator,
@@ -20,9 +20,13 @@ import * as WebBrowser from "expo-web-browser";
 import { useHonoClient } from "@/context/HonoProvider";
 import { Database, type TSummarizeResponse } from "@jpvnk/infynii-shared";
 import { processNDJSONResponse } from "@/helpers/ndjson";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 const ANIMATION_INTERVAL = 100;
+const HEADER_HEIGHT = 300;
 
 type TSearchResult = Database["public"]["Tables"]["searches_results"]["Row"];
 
@@ -37,10 +41,6 @@ type TScreenState = {
   isLoadingResult: boolean;
   resultError: string | null;
 };
-
-type TListItem =
-  | { type: "header"; data: TSearchResult }
-  | { type: "summary"; data: { resultId: string } };
 
 type TSearchResultHeaderProps = {
   result: TSearchResult | null;
@@ -70,16 +70,111 @@ function SearchResultHeader({ result, onOpenUrl }: TSearchResultHeaderProps) {
 }
 
 type TSearchResultSummaryProps = {
-  resultId: string;
-  flatListRef: React.RefObject<FlatList>;
+  resultId?: string | null;
+  scrollViewRef: React.RefObject<ScrollView>;
+  scrollWatcherRef: React.MutableRefObject<TScrollWatcher>;
+  scrollToEndWithCallback: (callback?: () => void) => void;
 };
 
-const CONTENT_HEIGHT = 100;
-const SCROLL_TIMEOUT = 100;
+type TAnimatedResultTextProps = {
+  messages: TSummarizeResponse["messages"] | undefined;
+  scrollViewRef: React.RefObject<ScrollView>;
+  scrollWatcherRef: React.MutableRefObject<TScrollWatcher>;
+  onContentHeightOverflown: (callback?: () => void) => void;
+  runIntervalRef: React.MutableRefObject<(() => void) | undefined>;
+};
+
+function AnimatedResultText({
+  messages,
+  scrollViewRef,
+  scrollWatcherRef,
+  onContentHeightOverflown,
+  runIntervalRef,
+}: TAnimatedResultTextProps) {
+  const [displayedText, setDisplayedText] = useState("");
+  const animationIndexRef = useRef(0);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Update buffer when new messages arrive
+  useEffect(() => {
+    if (!messages || messages.length === 0) {
+      animationIndexRef.current = 0;
+      setDisplayedText("");
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+      return;
+    }
+
+    // Clear any existing interval
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+
+    const allWords: string[] = [];
+    messages.forEach((message) => {
+      allWords.push(...message.content.split(" "));
+    });
+
+    runIntervalRef.current = () => {
+      intervalRef.current = setInterval(() => {
+        // Check if content is overflowing
+        if (scrollWatcherRef.current.isOverflowing) {
+          console.log("Content is overflowing!");
+          console.log("  - Content height:", scrollWatcherRef.current.contentHeight);
+          console.log("  - Container height:", scrollWatcherRef.current.containerHeight);
+
+          if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+          }
+
+          onContentHeightOverflown();
+          return;
+        }
+
+        const currentIndex = animationIndexRef.current;
+
+        if (currentIndex >= allWords.length) {
+          if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+          }
+          setDisplayedText(allWords.join(" "));
+          scrollViewRef.current?.scrollToEnd({ animated: true });
+          return;
+        }
+
+        animationIndexRef.current = currentIndex + 1;
+        const displayWords = allWords.slice(0, currentIndex + 1);
+        setDisplayedText(displayWords.join(" "));
+      }, ANIMATION_INTERVAL);
+    };
+
+    runIntervalRef.current?.();
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+  }, [messages]);
+
+  return (
+    <View style={{ flex: 1 }}>
+      <Text style={styles.summaryContent}>{displayedText}</Text>
+    </View>
+  );
+}
 
 function SearchResultSummary({
   resultId,
-  flatListRef,
+  scrollViewRef,
+  scrollWatcherRef,
+  scrollToEndWithCallback,
 }: TSearchResultSummaryProps) {
   const client = useHonoClient();
 
@@ -93,15 +188,10 @@ function SearchResultSummary({
     summarizationError: null,
   });
 
-  const [animating, setAnimating] = useState({
-    displayedText: "",
-    isAnimating: false,
-  });
-  const summaryWordsAnimationIndex = useRef(0);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
-
-  const incHeightRef = useRef(1);
-  const [contentHeight, setContentHeight] = useState(CONTENT_HEIGHT);
+  const [customHeight, setCustomHeight] = useState<undefined | number>(
+    undefined
+  );
+  const runIntervalRef = useRef<(() => void) | undefined>(undefined);
 
   const updateSummarization = useCallback((response: TSummarizeResponse) => {
     setState((prev) => {
@@ -171,97 +261,6 @@ function SearchResultSummary({
     [client]
   );
 
-  const fullText = useMemo(() => {
-    return state.summarization?.messages
-      ? state.summarization.messages.reduce(
-          (acc, message) => acc + message.content,
-          ""
-        )
-      : "";
-  }, [state.summarization?.messages]);
-
-  // Animate the text
-  useEffect(() => {
-    if (!animating.isAnimating || !fullText) {
-      return;
-    }
-
-    const words = fullText.split(" ");
-
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-
-    intervalRef.current = setInterval(() => {
-      const nextIndex = summaryWordsAnimationIndex.current + 1;
-
-      if (nextIndex >= words.length) {
-        setAnimating((prev) => ({
-          ...prev,
-          displayedText: fullText,
-          isAnimating: false,
-        }));
-        summaryWordsAnimationIndex.current = words.length;
-        if (intervalRef.current) {
-          clearInterval(intervalRef.current);
-          intervalRef.current = null;
-        }
-        return;
-      }
-
-      summaryWordsAnimationIndex.current = nextIndex;
-
-      const nextText = words.slice(0, nextIndex).join(" ");
-
-      setAnimating((prev) => ({
-        ...prev,
-        displayedText: nextText,
-      }));
-    }, ANIMATION_INTERVAL);
-
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    };
-  }, [fullText, animating.isAnimating]);
-
-  // Start animation when new messages arrive or content length changes
-  useEffect(() => {
-    if (!fullText) {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-      summaryWordsAnimationIndex.current = 0;
-      setAnimating((prev) => ({
-        ...prev,
-        displayedText: "",
-        isAnimating: false,
-      }));
-      return;
-    }
-
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-    summaryWordsAnimationIndex.current = 0;
-    setAnimating((prev) => ({ ...prev, displayedText: "", isAnimating: true }));
-  }, [fullText]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    };
-  }, []);
-
   // Save summary when summarization is complete
   useEffect(() => {
     if (!resultId) {
@@ -286,37 +285,53 @@ function SearchResultSummary({
 
   // Start summarization when component mounts or resultId changes
   useEffect(() => {
-    if (resultId) {
-      summarizeResult(resultId);
+    if (!resultId) {
+      return;
     }
+    summarizeResult(resultId);
   }, [resultId, summarizeResult]);
 
   const retrySummarization = useCallback(() => {
+    if (!resultId) {
+      return;
+    }
     summarizeResult(resultId);
   }, [summarizeResult, resultId]);
 
-  const handleTextLayout = useCallback((event: LayoutChangeEvent) => {
-    const { height: currentContentHeight } = event.nativeEvent.layout;
-    const d = currentContentHeight / (CONTENT_HEIGHT * incHeightRef.current);
-    if (d > 1) {
-      incHeightRef.current = incHeightRef.current + 1;
-      setContentHeight(CONTENT_HEIGHT * incHeightRef.current);
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, SCROLL_TIMEOUT);
+  const onContentHeightOverflown = useCallback(() => {
+    if (
+      !scrollWatcherRef.current.containerHeight ||
+      !scrollWatcherRef.current.contentHeight
+    ) {
+      return;
     }
-  }, []);
 
-  const handleContentLayout = useCallback((event: LayoutChangeEvent) => {
-    const { height: currentContentHeight } = event.nativeEvent.layout;
-    console.log("currentContentHeight", currentContentHeight);
+    console.log("Content has overflown!");
+    console.log("  - Content height:", scrollWatcherRef.current.contentHeight);
+    console.log("  - Container height:", scrollWatcherRef.current.containerHeight);
+
+    // TODO: Implement your overflow handling logic here
+    // For example: scroll to end, expand container, or pause animation
+
+    // Example: Scroll to end and resume animation after scroll completes
+    // scrollToEndWithCallback(() => {
+    //   console.log("Scroll animation completed!");
+    //   // Reset overflow flag and resume animation
+    //   scrollWatcherRef.current.isOverflowing = false;
+    //   runIntervalRef.current?.();
+    // });
   }, []);
 
   return (
-    <View style={styles.summarySection}>
-      <Text style={styles.sectionTitle}>Content Summary</Text>
+    <View
+      style={[
+        styles.summarySection,
+        customHeight ? { height: customHeight } : undefined,
+      ]}
+    >
+      <Text style={styles.sectionTitle}>Content Summary {customHeight ? `( ${customHeight}px )` : ""}</Text>
 
-      {state.isSummarizing && !state.summarization?.messages && (
+      {/* {state.isSummarizing && !state.summarization?.messages && (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="small" color="#007AFF" />
           <Text style={styles.loadingText}>Generating summary...</Text>
@@ -335,25 +350,26 @@ function SearchResultSummary({
             <Text style={styles.retryButtonText}>Retry</Text>
           </TouchableOpacity>
         </View>
-      )}
+      )} */}
+      {/* {!state.isSummarizing && state.summarization?.messages && ( */}
+      <AnimatedResultText
+        messages={state.summarization?.messages}
+        scrollViewRef={scrollViewRef}
+        scrollWatcherRef={scrollWatcherRef}
+        onContentHeightOverflown={onContentHeightOverflown}
+        runIntervalRef={runIntervalRef}
+      />
 
-      {state.summarization?.messages && (
-        <View
-          style={[styles.summaryContainer, { minHeight: contentHeight }]}
-          onLayout={handleTextLayout}
-        >
-          <Text style={styles.summaryContent}>{animating.displayedText}</Text>
-        </View>
-      )}
-
-      {state.isSummarizing && state.summarization?.messages && (
-        <View style={styles.streamingIndicator}>
-          <ActivityIndicator size="small" color="#007AFF" />
-        </View>
-      )}
+      {/* )} */}
     </View>
   );
 }
+
+type TScrollWatcher = {
+  containerHeight: number | null;
+  contentHeight: number | null;
+  isOverflowing: boolean;
+};
 
 export default function SearchResultScreen() {
   const { id } = useLocalSearchParams<{
@@ -361,13 +377,20 @@ export default function SearchResultScreen() {
   }>();
 
   const client = useHonoClient();
-  const flatListRef = useRef<FlatList>(null);
+  const scrollViewRef = useRef<ScrollView>(null);
   // State for search result only
   const [state, setState] = useState<TScreenState>({
     result: null,
     isLoadingResult: true,
     resultError: null,
   });
+  const scrollWatcherRef = useRef<TScrollWatcher>({
+    containerHeight: null,
+    contentHeight: null,
+    isOverflowing: false,
+  });
+  const insets = useSafeAreaInsets();
+  const scrollCallbackRef = useRef<(() => void) | null>(null);
 
   // Fetch search result
   useEffect(() => {
@@ -441,60 +464,90 @@ export default function SearchResultScreen() {
       Alert.alert("Error", "Failed to open URL");
     }
   };
-
-  const listData = useMemo<TListItem[]>(() => {
-    if (!state.result) {
-      return [];
+  const onLayout = useCallback((event: LayoutChangeEvent) => {
+    if (scrollWatcherRef.current.containerHeight !== null) {
+      return;
     }
-    return [{ type: "summary", data: { resultId: state.result.id } }];
-  }, [state.result]);
 
-  const renderItem = useCallback(({ item }: { item: TListItem }) => {
-    if (item.type === "summary") {
-      return (
-        <SearchResultSummary
-          resultId={item.data.resultId}
-          flatListRef={flatListRef}
-        />
-      );
-    }
-    return null;
+    const { height } = event.nativeEvent.layout;
+    scrollWatcherRef.current.containerHeight = height;
+    console.log("Container height set to:", height);
   }, []);
 
-  if (state.isLoadingResult) {
-    return (
-      <>
-        <Stack.Screen
-          options={{
-            headerBackTitle: "Back",
-          }}
-        />
-        <View style={styles.centerContainer}>
-          <ActivityIndicator size="small" color="#007AFF" />
-          <Text style={styles.loadingText}>Loading...</Text>
-        </View>
-      </>
-    );
-  }
+  const onContentSizeChange = useCallback((width: number, height: number) => {
+    scrollWatcherRef.current.contentHeight = height;
 
-  if (state.resultError) {
-    return (
-      <>
-        <Stack.Screen
-          options={{
-            title: "Error",
-            headerBackTitle: "Back",
-          }}
-        />
-        <View style={styles.centerContainer}>
-          <Text style={styles.errorText}>{state.resultError}</Text>
-        </View>
-      </>
-    );
-  }
+    if (scrollWatcherRef.current.containerHeight !== null) {
+      const isOverflowing = height > scrollWatcherRef.current.containerHeight;
+      scrollWatcherRef.current.isOverflowing = isOverflowing;
+
+      console.log("Content size changed:");
+      console.log("  - Content height:", height);
+      console.log("  - Container height:", scrollWatcherRef.current.containerHeight);
+      console.log("  - Is overflowing:", isOverflowing);
+    }
+  }, []);
+
+
+  // Custom scroll to end with callback
+  const scrollToEndWithCallback = useCallback((callback?: () => void) => {
+    if (callback) {
+      scrollCallbackRef.current = callback;
+    }
+    scrollViewRef.current?.scrollToEnd({ animated: true });
+  }, []);
+
+  // Handle scroll animation end
+  const handleMomentumScrollEnd = useCallback(() => {
+    if (scrollCallbackRef.current) {
+      const callback = scrollCallbackRef.current;
+      scrollCallbackRef.current = null;
+      callback();
+    }
+  }, []);
+
+  // const onContentHeightChange = useCallback((height: number) => {
+  //   const fullHeight = HEADER_HEIGHT + height + insets.bottom;
+  //   if (fullHeight > watchedHeightRef.current) {
+  //     scrollViewRef.current?.scrollToEnd({ animated: true });
+  //     watchedHeightRef.current = fullHeight;
+  //   }
+  // }, []);
+
+  // if (state.isLoadingResult) {
+  //   return (
+  //     <>
+  //       <Stack.Screen
+  //         options={{
+  //           headerBackTitle: "Back",
+  //         }}
+  //       />
+  //       <View style={styles.centerContainer}>
+  //         <ActivityIndicator size="small" color="#007AFF" />
+  //         <Text style={styles.loadingText}>Loading...</Text>
+  //       </View>
+  //     </>
+  //   );
+  // }
+
+  // if (state.resultError) {
+  //   return (
+  //     <>
+  //       <Stack.Screen
+  //         options={{
+  //           title: "Error",
+  //           headerBackTitle: "Back",
+  //         }}
+  //       />
+  //       <View style={styles.centerContainer}>
+  //         <Text style={styles.errorText}>{state.resultError}</Text>
+  //       </View>
+  //     </>
+  //   );
+  // }
 
   return (
-    <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
+    <View style={{ flex: 1, paddingBottom: insets.bottom }} onLayout={onLayout}>
       <Stack.Screen
         options={{
           title:
@@ -504,25 +557,21 @@ export default function SearchResultScreen() {
           headerBackTitle: "Back",
         }}
       />
-      <FlatList
-        ref={flatListRef}
-        data={listData}
-        renderItem={renderItem}
-        keyExtractor={(item) => item.type}
-        contentContainerStyle={{ backgroundColor: "blue" }}
-        ListHeaderComponent={
-          <SearchResultHeader result={state.result} onOpenUrl={handleOpenUrl} />
-        }
-        style={{ flex: 1, backgroundColor: "green" }}
-        // maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+      <ScrollView
+        ref={scrollViewRef}
         scrollEventThrottle={16}
-        onContentSizeChange={() => {
-          setTimeout(() => {
-            flatListRef.current?.scrollToEnd({ animated: true });
-          }, SCROLL_TIMEOUT);
-        }}
-      />
-    </SafeAreaView>
+        onMomentumScrollEnd={handleMomentumScrollEnd}
+        onContentSizeChange={onContentSizeChange}
+      >
+        <SearchResultHeader result={state.result} onOpenUrl={handleOpenUrl} />
+        <SearchResultSummary
+          resultId={state.result?.id ?? ""}
+          scrollViewRef={scrollViewRef}
+          scrollWatcherRef={scrollWatcherRef}
+          scrollToEndWithCallback={scrollToEndWithCallback}
+        />
+      </ScrollView>
+    </View>
   );
 }
 
@@ -531,6 +580,8 @@ const styles = StyleSheet.create({
     padding: 16,
     borderBottomWidth: 1,
     borderBottomColor: "#E0E0E0",
+    height: HEADER_HEIGHT,
+    justifyContent: "center",
   },
   centerContainer: {
     flex: 1,
@@ -567,13 +618,6 @@ const styles = StyleSheet.create({
     textDecorationLine: "underline",
     fontFamily: "Inter_400Regular",
   },
-  queryText: {
-    fontSize: 14,
-    color: "#666",
-    fontStyle: "italic",
-    marginBottom: 12,
-    fontFamily: "Inter_400Regular",
-  },
   scoreContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -608,6 +652,7 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_600SemiBold",
   },
   summarySection: {
+    flex: 1,
     padding: 16,
   },
   sectionTitle: {
@@ -621,25 +666,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
   },
-  summaryContainer: {},
   summaryContent: {
     fontSize: 16,
     lineHeight: 24,
     color: "#1A1A1A",
     textAlign: "justify",
     fontFamily: "Inter_400Regular",
-  },
-  streamingIndicator: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 8,
-  },
-  streamingText: {
-    fontSize: 14,
-    color: "#007AFF",
-    fontFamily: "Inter_400Regular",
-    marginLeft: 8,
   },
   errorContainer: {
     paddingVertical: 20,
