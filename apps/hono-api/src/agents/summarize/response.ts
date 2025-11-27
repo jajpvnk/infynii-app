@@ -39,7 +39,7 @@ const handleSummarization = async ({
 
   // Stream summarization responses
   for await (const event of await graph.stream(inputs)) {
-    const updates = Object.values<TSummarizeState>(event);
+    const updates = Object.values(event) as TSummarizeState[];
 
     for (const update of updates) {
       const response = createSummarizationResponse(update, resultId);
