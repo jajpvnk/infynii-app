@@ -12,7 +12,7 @@ const getMessageContent = (content: MessageContent) => {
       if (item.type === "text") {
         return item.text;
       }
-      if (item.type === "image_url") {
+      if (item.type === "image_url" && item.image_url) {
         if (typeof item.image_url === "string") {
           return item.image_url;
         }
@@ -26,10 +26,11 @@ const getMessageContent = (content: MessageContent) => {
 };
 
 export const serializeMessage = (message: BaseMessage): TSerializedMessage => {
+  const messageContent = getMessageContent(message.content);
   const baseSerialized = {
     id: crypto.randomUUID(),
-    type: message.getType(),
-    content: getMessageContent(message.content),
+    type: message.getType() as TSerializedMessage["type"],
+    content: (typeof messageContent === "string" ? messageContent : JSON.stringify(messageContent)) as string,
     name: message.name,
     timestamp: new Date().toUTCString(),
     additional_kwargs: message.additional_kwargs,
