@@ -146,7 +146,7 @@ const handleQueryProcessing = async ({
 
   // Stream query processing responses
   for await (const event of await runner.stream(inputs, config)) {
-    const updates = Object.values<TSearchState>(event);
+    const updates = Object.values(event) as TSearchState[];
 
     for (const update of updates) {
       const response = createQueryProcessingResponse(update, searchIdToUse);

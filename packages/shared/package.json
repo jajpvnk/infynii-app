@@ -19,8 +19,8 @@
     "build": "tsc"
   },
   "dependencies": {
-    "@langchain/langgraph": "^0.2.63",
-    "@langchain/core": "^0.3.43"
+    "@langchain/langgraph": "^1.0.2",
+    "@langchain/core": "^1.1.0"
   },
   "devDependencies": {
     "typescript": "^5.3.3"
