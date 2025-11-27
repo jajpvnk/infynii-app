@@ -1,5 +1,3 @@
-import z from "zod";
-
 import {
   type TGraphStatus,
   type TTavilySearchResult,
@@ -71,12 +69,28 @@ const createStartRouter = (searchId: string) => {
       - "${GraphStatus.NOT_SEARCHABLE}" if the query cannot be answered by searching
     `);
 
-    const schema = z.object({
-      status: z.nativeEnum(GraphStatus).describe("The routing decision"),
-      explanation: z.string().describe("Brief explanation of the decision"),
-    });
+    type TStartRouterOutput = {
+      status: TGraphStatus;
+      explanation: string;
+    };
 
-    const model = rawModel.withStructuredOutput(schema);
+    const schema = {
+      type: "object",
+      properties: {
+        status: {
+          type: "string",
+          enum: Object.values(GraphStatus),
+          description: "The routing decision",
+        },
+        explanation: {
+          type: "string",
+          description: "Brief explanation of the decision",
+        },
+      },
+      required: ["status", "explanation"],
+    } as const;
+
+    const model = rawModel.withStructuredOutput<TStartRouterOutput>(schema);
     const chain = prompt.pipe(model);
 
     startRouterLogger.info("Invoking AI model to analyze query...");
@@ -84,7 +98,7 @@ const createStartRouter = (searchId: string) => {
       query: currentQuery,
     });
     startRouterLogger.debug("AI analysis result:", result);
-    const resultStatus = result.status;
+    const resultStatus = result.status as TGraphStatus;
 
     if (
       resultStatus === GraphStatus.UNCLEAR ||
@@ -153,14 +167,26 @@ const createTransformQueryNode = () => {
     `);
     transformLogger.debug("Prompt template created");
 
-    const schema = z.object({
-      alternatives: z.array(z.string()).describe("Alternative queries"),
-    });
+    type TTransformQueryOutput = {
+      alternatives: string[];
+    };
+
+    const schema = {
+      type: "object",
+      properties: {
+        alternatives: {
+          type: "array",
+          items: { type: "string" },
+          description: "Alternative queries",
+        },
+      },
+      required: ["alternatives"],
+    } as const;
     transformLogger.debug("Schema defined for structured output");
 
     const model = new ChatGoogleGenerativeAI(
       GEMINI_MODEL_CONFIG
-    ).withStructuredOutput(schema);
+    ).withStructuredOutput<TTransformQueryOutput>(schema);
     transformLogger.debug(
       "Model initialized with config:",
       GEMINI_MODEL_CONFIG
@@ -210,16 +236,12 @@ const createSearchNode = () => {
       "Filtering results with threshold score:",
       THRESHOLD_SCORE
     );
-    const filteredResults: TTavilySearchResult[] = toolResult
+    const filteredResults: TTavilySearchResult[] = (toolResult as TTavilySearchResult[])
       .filter((result: TTavilySearchResult) => result.score >= THRESHOLD_SCORE)
       .sort(
-        (a: TTavilySearchResultRaw, b: TTavilySearchResultRaw) =>
+        (a: TTavilySearchResult, b: TTavilySearchResult) =>
           b.score - a.score
-      )
-      .map((result: TTavilySearchResultRaw) => ({
-        id: randomUUID(),
-        ...result,
-      }));
+      );
 
     searchNodeLogger.info("Filtered results count:", filteredResults.length);
     searchNodeLogger.debug(

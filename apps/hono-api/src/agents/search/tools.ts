@@ -1,6 +1,5 @@
-import z from "zod";
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
-import { tool } from "@langchain/core/tools";
+import { DynamicStructuredTool } from "@langchain/core/tools";
 import { randomUUID } from "crypto";
 import { AIMessage, ToolMessage } from "@langchain/core/messages";
 import type {
@@ -10,31 +9,43 @@ import type {
 import { GEMINI_MODEL_CONFIG, MAX_SEARCH_RESULTS } from "./constants.js";
 
 // Function to create preview text from content
-const createPreviewText = (content: string, maxLength: number = 150): string => {
-  if (!content) return "";
-  
+function createPreviewText(content: string, maxLength: number = 150): string {
+  if (!content) {
+    return "";
+  }
+
   // Clean up the content by removing extra whitespace and newlines
   const cleanedContent = content.replace(/\s+/g, ' ').trim();
-  
+
   if (cleanedContent.length <= maxLength) {
     return cleanedContent;
   }
-  
+
   // Find the last complete word within the limit
   const truncated = cleanedContent.substring(0, maxLength);
   const lastSpaceIndex = truncated.lastIndexOf(' ');
-  
+
   if (lastSpaceIndex > maxLength * 0.8) { // If we can find a good break point
     return truncated.substring(0, lastSpaceIndex) + '...';
   }
-  
+
   return truncated + '...';
-};
+}
 
 export const rawModel = new ChatGoogleGenerativeAI(GEMINI_MODEL_CONFIG);
 
-export const searchTool = tool(
-  async ({ query }: { query: string }) => {
+export const searchTool = new DynamicStructuredTool({
+  name: "searchTool",
+  description:
+    "Use Tavily to search the web for relevant results according to the user's query.",
+  schema: {
+    type: "object",
+    properties: {
+      query: { type: "string", description: "The search query" },
+    },
+    required: ["query"],
+  } as const,
+  func: async ({ query }: { query: string }) => {
     // tavily api
     const resp = await fetch("https://api.tavily.com/search", {
       method: "POST",
@@ -55,7 +66,7 @@ export const searchTool = tool(
 
     const data = await resp.json();
     const rawResults: TTavilySearchResultRaw[] = data?.results ?? [];
-    
+
     // Transform raw results to include preview text
     const results: TTavilySearchResult[] = rawResults.map((result) => ({
       id: randomUUID(),
@@ -65,15 +76,7 @@ export const searchTool = tool(
 
     return results;
   },
-  {
-    name: "searchTool",
-    description:
-      "Use Tavily to search the web for relevant results according to the user's query.",
-    schema: z.object({
-      query: z.string(),
-    }),
-  }
-);
+});
 
 export const createSearchToolMessages = (
   query: string,

@@ -1,9 +1,5 @@
-import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
-import { tool } from "@langchain/core/tools";
-import { z } from "zod";
-import { ChatPromptTemplate } from "@langchain/core/prompts";
+import { DynamicStructuredTool } from "@langchain/core/tools";
 import {
-  GEMINI_MODEL_CONFIG,
   MAX_CONTENT_LENGTH,
   MIN_CONTENT_LENGTH,
 } from "./constants.js";
@@ -26,8 +22,18 @@ type TTavilyExtractResultRaw = {
 };
 
 // Content fetching tool using Tavily extraction endpoint
-export const contentFetchTool = tool(
-  async ({ url }: { url: string }) => {
+export const contentFetchTool = new DynamicStructuredTool({
+  name: "contentFetchTool",
+  description:
+    "Fetch and extract content from a web URL using Tavily extraction API",
+  schema: {
+    type: "object",
+    properties: {
+      url: { type: "string", description: "The URL to fetch content from" },
+    },
+    required: ["url"],
+  } as const,
+  func: async ({ url }: { url: string }) => {
     try {
       const tavilyApiKey = process.env.TAVILY_API_KEY;
       if (!tavilyApiKey) {
@@ -81,12 +87,4 @@ export const contentFetchTool = tool(
       );
     }
   },
-  {
-    name: "contentFetchTool",
-    description:
-      "Fetch and extract content from a web URL using Tavily extraction API",
-    schema: z.object({
-      url: z.string().describe("The URL to fetch content from"),
-    }),
-  }
-);
+});
