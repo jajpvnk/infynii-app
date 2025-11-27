@@ -4,6 +4,7 @@ import React, {
   useCallback,
   useRef,
   useMemo,
+  useLayoutEffect,
 } from "react";
 import {
   View,
@@ -74,6 +75,7 @@ type TSearchResultSummaryProps = {
   scrollViewRef: React.RefObject<ScrollView>;
   scrollWatcherRef: React.MutableRefObject<TScrollWatcher>;
   scrollToEndWithCallback: (callback?: () => void) => void;
+  textAnimationRef: React.MutableRefObject<(() => void) | undefined>;
 };
 
 type TAnimatedResultTextProps = {
@@ -81,7 +83,7 @@ type TAnimatedResultTextProps = {
   scrollViewRef: React.RefObject<ScrollView>;
   scrollWatcherRef: React.MutableRefObject<TScrollWatcher>;
   onContentHeightOverflown: (callback?: () => void) => void;
-  runIntervalRef: React.MutableRefObject<(() => void) | undefined>;
+  textAnimationRef: React.MutableRefObject<(() => void) | undefined>;
 };
 
 function AnimatedResultText({
@@ -89,7 +91,7 @@ function AnimatedResultText({
   scrollViewRef,
   scrollWatcherRef,
   onContentHeightOverflown,
-  runIntervalRef,
+  textAnimationRef,
 }: TAnimatedResultTextProps) {
   const [displayedText, setDisplayedText] = useState("");
   const animationIndexRef = useRef(0);
@@ -118,24 +120,28 @@ function AnimatedResultText({
       allWords.push(...message.content.split(" "));
     });
 
-    runIntervalRef.current = () => {
+    textAnimationRef.current = () => {
       intervalRef.current = setInterval(() => {
-        // Check if content is overflowing
-        if (scrollWatcherRef.current.isOverflowing) {
-          console.log("Content is overflowing!");
-          console.log("  - Content height:", scrollWatcherRef.current.contentHeight);
-          console.log("  - Container height:", scrollWatcherRef.current.containerHeight);
+        const currentIndex = animationIndexRef.current;
 
+        const containerHeight = scrollWatcherRef.current.container.height;
+        const currentTextHeight = scrollWatcherRef.current.text.height;
+        const totalTextHeight = (currentTextHeight ?? 0) + HEADER_HEIGHT;
+        // console.log("total text height: ", totalTextHeight);
+        // console.log("container height: ", containerHeight);
+        // console.log("--------------------------------");
+        if (
+          containerHeight &&
+          totalTextHeight &&
+          totalTextHeight >= containerHeight
+        ) {
           if (intervalRef.current) {
             clearInterval(intervalRef.current);
             intervalRef.current = null;
           }
-
           onContentHeightOverflown();
           return;
         }
-
-        const currentIndex = animationIndexRef.current;
 
         if (currentIndex >= allWords.length) {
           if (intervalRef.current) {
@@ -153,7 +159,7 @@ function AnimatedResultText({
       }, ANIMATION_INTERVAL);
     };
 
-    runIntervalRef.current?.();
+    textAnimationRef.current?.();
 
     return () => {
       if (intervalRef.current) {
@@ -163,8 +169,13 @@ function AnimatedResultText({
     };
   }, [messages]);
 
+  const onTextLayout = useCallback((event: LayoutChangeEvent) => {
+    const { height } = event.nativeEvent.layout;
+    scrollWatcherRef.current.text.height = height;
+  }, []);
+
   return (
-    <View style={{ flex: 1 }}>
+    <View onLayout={onTextLayout} style={{ backgroundColor: "yellow" }}>
       <Text style={styles.summaryContent}>{displayedText}</Text>
     </View>
   );
@@ -175,9 +186,10 @@ function SearchResultSummary({
   scrollViewRef,
   scrollWatcherRef,
   scrollToEndWithCallback,
+  textAnimationRef,
 }: TSearchResultSummaryProps) {
   const client = useHonoClient();
-
+  const wrapperRef = useRef<View>(null);
   const [state, setState] = useState<{
     summarization: TSummarization | undefined;
     isSummarizing: boolean;
@@ -191,7 +203,6 @@ function SearchResultSummary({
   const [customHeight, setCustomHeight] = useState<undefined | number>(
     undefined
   );
-  const runIntervalRef = useRef<(() => void) | undefined>(undefined);
 
   const updateSummarization = useCallback((response: TSummarizeResponse) => {
     setState((prev) => {
@@ -299,37 +310,36 @@ function SearchResultSummary({
   }, [summarizeResult, resultId]);
 
   const onContentHeightOverflown = useCallback(() => {
-    if (
-      !scrollWatcherRef.current.containerHeight ||
-      !scrollWatcherRef.current.contentHeight
-    ) {
-      return;
-    }
+    const currentTextHeight = scrollWatcherRef.current.text.height ?? 0;
+    const newCustomHeight = currentTextHeight + 100;
 
-    console.log("Content has overflown!");
-    console.log("  - Content height:", scrollWatcherRef.current.contentHeight);
-    console.log("  - Container height:", scrollWatcherRef.current.containerHeight);
+    setCustomHeight(newCustomHeight);
+    scrollWatcherRef.current.container.height = newCustomHeight + HEADER_HEIGHT;
 
-    // TODO: Implement your overflow handling logic here
-    // For example: scroll to end, expand container, or pause animation
-
-    // Example: Scroll to end and resume animation after scroll completes
-    // scrollToEndWithCallback(() => {
-    //   console.log("Scroll animation completed!");
-    //   // Reset overflow flag and resume animation
-    //   scrollWatcherRef.current.isOverflowing = false;
-    //   runIntervalRef.current?.();
-    // });
+    setTimeout(() => {
+      scrollViewRef.current?.scrollToEnd({ animated: true });
+      scrollToEndWithCallback(() => {
+        console.log("scroll to end with callback");
+        setTimeout(() => {
+          textAnimationRef.current?.();
+        }, 1000)
+      });
+    }, 10);
   }, []);
+
+  console.log("custom height: ", customHeight);
 
   return (
     <View
       style={[
-        styles.summarySection,
-        customHeight ? { height: customHeight } : undefined,
+        { backgroundColor: "green" },
+        customHeight ? { height: customHeight } : { height: 'auto' },
       ]}
     >
-      <Text style={styles.sectionTitle}>Content Summary {customHeight ? `( ${customHeight}px )` : ""}</Text>
+      <Text style={{ color: "white" }}>custom height: {customHeight}</Text>
+      {/* <Text style={styles.sectionTitle}>
+        Content Summary {customHeight ? `( ${customHeight}px )` : ""}
+      </Text> */}
 
       {/* {state.isSummarizing && !state.summarization?.messages && (
         <View style={styles.loadingContainer}>
@@ -357,7 +367,7 @@ function SearchResultSummary({
         scrollViewRef={scrollViewRef}
         scrollWatcherRef={scrollWatcherRef}
         onContentHeightOverflown={onContentHeightOverflown}
-        runIntervalRef={runIntervalRef}
+        textAnimationRef={textAnimationRef}
       />
 
       {/* )} */}
@@ -366,9 +376,14 @@ function SearchResultSummary({
 }
 
 type TScrollWatcher = {
-  containerHeight: number | null;
-  contentHeight: number | null;
-  isOverflowing: boolean;
+  container: {
+    height: number | null;
+    lastSeenHeight: number | null;
+    sameHeightCount: number;
+  };
+  text: {
+    height: number | null;
+  };
 };
 
 export default function SearchResultScreen() {
@@ -385,12 +400,20 @@ export default function SearchResultScreen() {
     resultError: null,
   });
   const scrollWatcherRef = useRef<TScrollWatcher>({
-    containerHeight: null,
-    contentHeight: null,
-    isOverflowing: false,
+    container: {
+      height: null,
+      lastSeenHeight: null,
+      sameHeightCount: 0,
+    },
+    text: {
+      height: null,
+    },
   });
   const insets = useSafeAreaInsets();
   const scrollCallbackRef = useRef<(() => void) | null>(null);
+  const textAnimationRef = useRef<(() => void) | undefined>(undefined);
+
+  const wrapperRef = useRef<View>(null);
 
   // Fetch search result
   useEffect(() => {
@@ -441,6 +464,25 @@ export default function SearchResultScreen() {
     })();
   }, [id, client]);
 
+  useLayoutEffect(() => {
+    const measureInterval = setInterval(() => {
+      wrapperRef.current?.measure((x, y, width, height, pageX, pageY) => {
+        if (scrollWatcherRef.current.container?.lastSeenHeight === height) {
+          scrollWatcherRef.current.container.sameHeightCount += 1;
+          if (scrollWatcherRef.current.container.sameHeightCount >= 2) {
+            clearInterval(measureInterval);
+            return;
+          }
+        } else {
+          scrollWatcherRef.current.container.sameHeightCount = 1;
+        }
+        scrollWatcherRef.current.container.height = height;
+        scrollWatcherRef.current.container.lastSeenHeight = height;
+      });
+    }, 100);
+    return () => clearInterval(measureInterval);
+  }, []);
+
   const handleOpenUrl = async () => {
     if (!state.result?.url) {
       return;
@@ -464,37 +506,49 @@ export default function SearchResultScreen() {
       Alert.alert("Error", "Failed to open URL");
     }
   };
-  const onLayout = useCallback((event: LayoutChangeEvent) => {
-    if (scrollWatcherRef.current.containerHeight !== null) {
-      return;
-    }
 
-    const { height } = event.nativeEvent.layout;
-    scrollWatcherRef.current.containerHeight = height;
-    console.log("Container height set to:", height);
-  }, []);
+  // const onWrapperLayout = useCallback((event: LayoutChangeEvent) => {
+  //   const { height } = event.nativeEvent.layout;
+  //   console.log("wrapper layout", height);
 
-  const onContentSizeChange = useCallback((width: number, height: number) => {
-    scrollWatcherRef.current.contentHeight = height;
+  //   // Check if height is same as last time
+  //   if (scrollWatcherRef.current.lastSeenHeight === height) {
+  //     scrollWatcherRef.current.sameHeightCount += 1;
 
-    if (scrollWatcherRef.current.containerHeight !== null) {
-      const isOverflowing = height > scrollWatcherRef.current.containerHeight;
-      scrollWatcherRef.current.isOverflowing = isOverflowing;
+  //     // Stop updating if we've seen the same height 2 times in a row
+  //     if (scrollWatcherRef.current.sameHeightCount >= 2) {
+  //       return;
+  //     }
+  //   } else {
+  //     // Height changed, reset counter
+  //     scrollWatcherRef.current.sameHeightCount = 1;
+  //   }
 
-      console.log("Content size changed:");
-      console.log("  - Content height:", height);
-      console.log("  - Container height:", scrollWatcherRef.current.containerHeight);
-      console.log("  - Is overflowing:", isOverflowing);
-    }
-  }, []);
+  //   // Update last seen height
+  //   scrollWatcherRef.current.lastSeenHeight = height;
 
+  //   // Update container height
+  //   if (scrollWatcherRef.current.containerHeight === null) {
+  //     scrollWatcherRef.current.containerHeight = height;
+  //   } else {
+  //     scrollWatcherRef.current.containerHeight = Math.min(
+  //       scrollWatcherRef.current.containerHeight,
+  //       height
+  //     );
+  //   }
+  // }, []);
+
+  // const onContentSizeChange = useCallback((_: number, height: number) => {
+  //   scrollWatcherRef.current.scrollHeight = height;
+  //   // console.log("scroll height", scrollWatcherRef.current.scrollHeight);
+  // }, []);
 
   // Custom scroll to end with callback
   const scrollToEndWithCallback = useCallback((callback?: () => void) => {
+    scrollViewRef.current?.scrollToEnd({ animated: true });
     if (callback) {
       scrollCallbackRef.current = callback;
     }
-    scrollViewRef.current?.scrollToEnd({ animated: true });
   }, []);
 
   // Handle scroll animation end
@@ -546,8 +600,18 @@ export default function SearchResultScreen() {
   //   );
   // }
 
+  const onContentSizeChange = useCallback((_: number, height: number) => {
+    // const containerHeight = scrollWatcherRef.current.container.height;
+    // const contentHeight = height;
+    // if (containerHeight && contentHeight && contentHeight >= containerHeight) {
+    //   console.log("content height is greater than container height: ", contentHeight, " container height: ", containerHeight);
+    //   scrollWatcherRef.current.container.height = height + 200;
+    //   console.log("new container height: ", scrollWatcherRef.current.container.height);
+    // }
+  }, []);
+
   return (
-    <View style={{ flex: 1, paddingBottom: insets.bottom }} onLayout={onLayout}>
+    <View style={{ flex: 1, paddingBottom: insets.bottom }}>
       <Stack.Screen
         options={{
           title:
@@ -557,20 +621,25 @@ export default function SearchResultScreen() {
           headerBackTitle: "Back",
         }}
       />
-      <ScrollView
-        ref={scrollViewRef}
-        scrollEventThrottle={16}
-        onMomentumScrollEnd={handleMomentumScrollEnd}
-        onContentSizeChange={onContentSizeChange}
-      >
-        <SearchResultHeader result={state.result} onOpenUrl={handleOpenUrl} />
-        <SearchResultSummary
-          resultId={state.result?.id ?? ""}
-          scrollViewRef={scrollViewRef}
-          scrollWatcherRef={scrollWatcherRef}
-          scrollToEndWithCallback={scrollToEndWithCallback}
-        />
-      </ScrollView>
+      <View style={{ flex: 1, backgroundColor: "blue" }} ref={wrapperRef}>
+        <ScrollView
+          ref={scrollViewRef}
+          onMomentumScrollEnd={handleMomentumScrollEnd}
+          onContentSizeChange={onContentSizeChange}
+          style={{ flex: 1 }}
+          contentContainerStyle={{ flex: 0, flexGrow: 0, flexShrink: 0, paddingVertical: 0, paddingHorizontal: 0 }}
+          showsVerticalScrollIndicator={false}
+        >
+          <SearchResultHeader result={state.result} onOpenUrl={handleOpenUrl} />
+          <SearchResultSummary
+            resultId={state.result?.id ?? ""}
+            scrollViewRef={scrollViewRef}
+            scrollWatcherRef={scrollWatcherRef}
+            scrollToEndWithCallback={scrollToEndWithCallback}
+            textAnimationRef={textAnimationRef}
+          />
+        </ScrollView>
+      </View>
     </View>
   );
 }
@@ -653,7 +722,7 @@ const styles = StyleSheet.create({
   },
   summarySection: {
     flex: 1,
-    padding: 16,
+    // padding: 16,
   },
   sectionTitle: {
     fontSize: 18,

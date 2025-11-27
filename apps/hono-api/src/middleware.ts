@@ -7,7 +7,8 @@ import type { Database } from "@jpvnk/infynii-shared";
 
 declare module "hono" {
   interface ContextVariableMap {
-    supabase: SupabaseClient<Database>;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    supabase: SupabaseClient<Database, "public", any>;
   }
 }
 

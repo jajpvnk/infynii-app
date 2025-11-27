@@ -4,7 +4,6 @@ import { contentFetchTool } from "./tools.js";
 import { graphLogger } from "../logger.js";
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import { GEMINI_MODEL_CONFIG } from "./constants.js";
-import { z } from "zod";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 import {
   type TSummarizeState,
@@ -29,13 +28,20 @@ const createSummarizeNode = () => {
         url: state.url,
       });
 
-      const schema = z.object({
-        summary: z
-          .string()
-          .describe(
-            "Well-structured summary capturing main points in 20-30% length"
-          ),
-      });
+      type TSummaryOutput = {
+        summary: string;
+      };
+
+      const schema = {
+        type: "object",
+        properties: {
+          summary: {
+            type: "string",
+            description: "Well-structured summary capturing main points in 20-30% length",
+          },
+        },
+        required: ["summary"],
+      } as const;
 
       const prompt = ChatPromptTemplate.fromTemplate(`
         You are a professional summarizer.
@@ -50,7 +56,7 @@ const createSummarizeNode = () => {
         {content}
       `);
 
-      const model = rawModel.withStructuredOutput(schema);
+      const model = rawModel.withStructuredOutput<TSummaryOutput>(schema);
       const chain = prompt.pipe(model);
 
       const result = await chain.invoke({
