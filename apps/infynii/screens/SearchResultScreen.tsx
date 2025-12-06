@@ -1,11 +1,4 @@
-import React, {
-  useEffect,
-  useState,
-  useCallback,
-  useRef,
-  useMemo,
-  useLayoutEffect,
-} from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -14,6 +7,9 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   LayoutChangeEvent,
+  Animated,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from "react-native";
 import { StyleSheet } from "react-native";
 import { useLocalSearchParams, Stack } from "expo-router";
@@ -21,10 +17,8 @@ import * as WebBrowser from "expo-web-browser";
 import { useHonoClient } from "@/context/HonoProvider";
 import { Database, type TSummarizeResponse } from "@jpvnk/infynii-shared";
 import { processNDJSONResponse } from "@/helpers/ndjson";
-import {
-  SafeAreaView,
-  useSafeAreaInsets,
-} from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { ChevronDown } from "lucide-react-native";
 
 const ANIMATION_INTERVAL = 100;
 const HEADER_HEIGHT = 300;
@@ -72,35 +66,41 @@ function SearchResultHeader({ result, onOpenUrl }: TSearchResultHeaderProps) {
 
 type TSearchResultSummaryProps = {
   resultId?: string | null;
-  scrollViewRef: React.RefObject<ScrollView>;
-  scrollWatcherRef: React.MutableRefObject<TScrollWatcher>;
-  scrollToEndWithCallback: (callback?: () => void) => void;
   textAnimationRef: React.MutableRefObject<(() => void) | undefined>;
+  pauseAnimationRef: React.MutableRefObject<(() => void) | undefined>;
 };
 
 type TAnimatedResultTextProps = {
   messages: TSummarizeResponse["messages"] | undefined;
-  scrollViewRef: React.RefObject<ScrollView>;
-  scrollWatcherRef: React.MutableRefObject<TScrollWatcher>;
-  onContentHeightOverflown: (callback?: () => void) => void;
   textAnimationRef: React.MutableRefObject<(() => void) | undefined>;
+  pauseAnimationRef: React.MutableRefObject<(() => void) | undefined>;
 };
 
 function AnimatedResultText({
   messages,
-  scrollViewRef,
-  scrollWatcherRef,
-  onContentHeightOverflown,
   textAnimationRef,
+  pauseAnimationRef,
 }: TAnimatedResultTextProps) {
   const [displayedText, setDisplayedText] = useState("");
   const animationIndexRef = useRef(0);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const allWordsRef = useRef<string[]>([]);
 
-  // Update buffer when new messages arrive
+  // Set up pause function
+  useEffect(() => {
+    pauseAnimationRef.current = () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+  }, [pauseAnimationRef]);
+
+  // Set up resume/start function and process messages
   useEffect(() => {
     if (!messages || messages.length === 0) {
       animationIndexRef.current = 0;
+      allWordsRef.current = [];
       setDisplayedText("");
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
@@ -115,51 +115,40 @@ function AnimatedResultText({
       intervalRef.current = null;
     }
 
+    // Build words array
     const allWords: string[] = [];
     messages.forEach((message) => {
       allWords.push(...message.content.split(" "));
     });
+    allWordsRef.current = allWords;
 
+    // Define the animation start/resume function
     textAnimationRef.current = () => {
+      // Don't start if already running
+      if (intervalRef.current) {
+        return;
+      }
+
       intervalRef.current = setInterval(() => {
         const currentIndex = animationIndexRef.current;
+        const words = allWordsRef.current;
 
-        const containerHeight = scrollWatcherRef.current.container.height;
-        const currentTextHeight = scrollWatcherRef.current.text.height;
-        const totalTextHeight = (currentTextHeight ?? 0) + HEADER_HEIGHT;
-        // console.log("total text height: ", totalTextHeight);
-        // console.log("container height: ", containerHeight);
-        // console.log("--------------------------------");
-        if (
-          containerHeight &&
-          totalTextHeight &&
-          totalTextHeight >= containerHeight
-        ) {
+        if (currentIndex >= words.length) {
           if (intervalRef.current) {
             clearInterval(intervalRef.current);
             intervalRef.current = null;
           }
-          onContentHeightOverflown();
-          return;
-        }
-
-        if (currentIndex >= allWords.length) {
-          if (intervalRef.current) {
-            clearInterval(intervalRef.current);
-            intervalRef.current = null;
-          }
-          setDisplayedText(allWords.join(" "));
-          scrollViewRef.current?.scrollToEnd({ animated: true });
+          setDisplayedText(words.join(" "));
           return;
         }
 
         animationIndexRef.current = currentIndex + 1;
-        const displayWords = allWords.slice(0, currentIndex + 1);
-        setDisplayedText(displayWords.join(" "));
+        setDisplayedText(words.slice(0, currentIndex + 1).join(" "));
       }, ANIMATION_INTERVAL);
     };
 
-    textAnimationRef.current?.();
+    // Start animation
+    textAnimationRef.current();
 
     return () => {
       if (intervalRef.current) {
@@ -167,15 +156,10 @@ function AnimatedResultText({
         intervalRef.current = null;
       }
     };
-  }, [messages]);
-
-  const onTextLayout = useCallback((event: LayoutChangeEvent) => {
-    const { height } = event.nativeEvent.layout;
-    scrollWatcherRef.current.text.height = height;
-  }, []);
+  }, [messages, textAnimationRef]);
 
   return (
-    <View onLayout={onTextLayout} style={{ backgroundColor: "yellow" }}>
+    <View style={styles.summaryTextContainer}>
       <Text style={styles.summaryContent}>{displayedText}</Text>
     </View>
   );
@@ -183,13 +167,10 @@ function AnimatedResultText({
 
 function SearchResultSummary({
   resultId,
-  scrollViewRef,
-  scrollWatcherRef,
-  scrollToEndWithCallback,
   textAnimationRef,
+  pauseAnimationRef,
 }: TSearchResultSummaryProps) {
   const client = useHonoClient();
-  const wrapperRef = useRef<View>(null);
   const [state, setState] = useState<{
     summarization: TSummarization | undefined;
     isSummarizing: boolean;
@@ -199,10 +180,6 @@ function SearchResultSummary({
     isSummarizing: false,
     summarizationError: null,
   });
-
-  const [customHeight, setCustomHeight] = useState<undefined | number>(
-    undefined
-  );
 
   const updateSummarization = useCallback((response: TSummarizeResponse) => {
     setState((prev) => {
@@ -302,46 +279,9 @@ function SearchResultSummary({
     summarizeResult(resultId);
   }, [resultId, summarizeResult]);
 
-  const retrySummarization = useCallback(() => {
-    if (!resultId) {
-      return;
-    }
-    summarizeResult(resultId);
-  }, [summarizeResult, resultId]);
-
-  const onContentHeightOverflown = useCallback(() => {
-    const currentTextHeight = scrollWatcherRef.current.text.height ?? 0;
-    const newCustomHeight = currentTextHeight + 100;
-
-    setCustomHeight(newCustomHeight);
-    scrollWatcherRef.current.container.height = newCustomHeight + HEADER_HEIGHT;
-
-    setTimeout(() => {
-      scrollViewRef.current?.scrollToEnd({ animated: true });
-      scrollToEndWithCallback(() => {
-        console.log("scroll to end with callback");
-        setTimeout(() => {
-          textAnimationRef.current?.();
-        }, 1000)
-      });
-    }, 10);
-  }, []);
-
-  console.log("custom height: ", customHeight);
-
   return (
-    <View
-      style={[
-        { backgroundColor: "green" },
-        customHeight ? { height: customHeight } : { height: 'auto' },
-      ]}
-    >
-      <Text style={{ color: "white" }}>custom height: {customHeight}</Text>
-      {/* <Text style={styles.sectionTitle}>
-        Content Summary {customHeight ? `( ${customHeight}px )` : ""}
-      </Text> */}
-
-      {/* {state.isSummarizing && !state.summarization?.messages && (
+    <View style={styles.summarySection}>
+      {state.isSummarizing && !state.summarization?.messages && (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="small" color="#007AFF" />
           <Text style={styles.loadingText}>Generating summary...</Text>
@@ -353,38 +293,68 @@ function SearchResultSummary({
           <Text style={styles.errorText}>
             Failed to generate summary: {state.summarizationError}
           </Text>
-          <TouchableOpacity
-            style={styles.retryButton}
-            onPress={retrySummarization}
-          >
-            <Text style={styles.retryButtonText}>Retry</Text>
-          </TouchableOpacity>
         </View>
-      )} */}
-      {/* {!state.isSummarizing && state.summarization?.messages && ( */}
+      )}
+
       <AnimatedResultText
         messages={state.summarization?.messages}
-        scrollViewRef={scrollViewRef}
-        scrollWatcherRef={scrollWatcherRef}
-        onContentHeightOverflown={onContentHeightOverflown}
         textAnimationRef={textAnimationRef}
+        pauseAnimationRef={pauseAnimationRef}
       />
-
-      {/* )} */}
     </View>
   );
 }
 
-type TScrollWatcher = {
-  container: {
-    height: number | null;
-    lastSeenHeight: number | null;
-    sameHeightCount: number;
-  };
-  text: {
-    height: number | null;
-  };
+type TFloatingScrollButtonProps = {
+  visible: boolean;
+  onPress: () => void;
 };
+
+function FloatingScrollButton({ visible, onPress }: TFloatingScrollButtonProps) {
+  const animatedValue = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(animatedValue, {
+      toValue: visible ? 1 : 0,
+      duration: 200,
+      useNativeDriver: true,
+    }).start();
+  }, [visible, animatedValue]);
+
+  const animatedStyle = {
+    opacity: animatedValue,
+    transform: [
+      {
+        translateY: animatedValue.interpolate({
+          inputRange: [0, 1],
+          outputRange: [20, 0],
+        }),
+      },
+      {
+        scale: animatedValue.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0.8, 1],
+        }),
+      },
+    ],
+  };
+
+  if (!visible) {
+    return null;
+  }
+
+  return (
+    <Animated.View style={[styles.floatingButtonContainer, animatedStyle]}>
+      <TouchableOpacity
+        style={styles.floatingButton}
+        onPress={onPress}
+        activeOpacity={0.8}
+      >
+        <ChevronDown size={24} color="#FFFFFF" strokeWidth={2.5} />
+      </TouchableOpacity>
+    </Animated.View>
+  );
+}
 
 export default function SearchResultScreen() {
   const { id } = useLocalSearchParams<{
@@ -399,21 +369,16 @@ export default function SearchResultScreen() {
     isLoadingResult: true,
     resultError: null,
   });
-  const scrollWatcherRef = useRef<TScrollWatcher>({
-    container: {
-      height: null,
-      lastSeenHeight: null,
-      sameHeightCount: 0,
-    },
-    text: {
-      height: null,
-    },
-  });
   const insets = useSafeAreaInsets();
   const scrollCallbackRef = useRef<(() => void) | null>(null);
   const textAnimationRef = useRef<(() => void) | undefined>(undefined);
+  const pauseAnimationRef = useRef<(() => void) | undefined>(undefined);
 
-  const wrapperRef = useRef<View>(null);
+  // State for floating button visibility
+  const [showFloatingButton, setShowFloatingButton] = useState(false);
+  const contentHeightRef = useRef(0);
+  const scrollViewHeightRef = useRef(0);
+  const currentScrollOffsetRef = useRef(0);
 
   // Fetch search result
   useEffect(() => {
@@ -464,25 +429,6 @@ export default function SearchResultScreen() {
     })();
   }, [id, client]);
 
-  useLayoutEffect(() => {
-    const measureInterval = setInterval(() => {
-      wrapperRef.current?.measure((x, y, width, height, pageX, pageY) => {
-        if (scrollWatcherRef.current.container?.lastSeenHeight === height) {
-          scrollWatcherRef.current.container.sameHeightCount += 1;
-          if (scrollWatcherRef.current.container.sameHeightCount >= 2) {
-            clearInterval(measureInterval);
-            return;
-          }
-        } else {
-          scrollWatcherRef.current.container.sameHeightCount = 1;
-        }
-        scrollWatcherRef.current.container.height = height;
-        scrollWatcherRef.current.container.lastSeenHeight = height;
-      });
-    }, 100);
-    return () => clearInterval(measureInterval);
-  }, []);
-
   const handleOpenUrl = async () => {
     if (!state.result?.url) {
       return;
@@ -507,50 +453,6 @@ export default function SearchResultScreen() {
     }
   };
 
-  // const onWrapperLayout = useCallback((event: LayoutChangeEvent) => {
-  //   const { height } = event.nativeEvent.layout;
-  //   console.log("wrapper layout", height);
-
-  //   // Check if height is same as last time
-  //   if (scrollWatcherRef.current.lastSeenHeight === height) {
-  //     scrollWatcherRef.current.sameHeightCount += 1;
-
-  //     // Stop updating if we've seen the same height 2 times in a row
-  //     if (scrollWatcherRef.current.sameHeightCount >= 2) {
-  //       return;
-  //     }
-  //   } else {
-  //     // Height changed, reset counter
-  //     scrollWatcherRef.current.sameHeightCount = 1;
-  //   }
-
-  //   // Update last seen height
-  //   scrollWatcherRef.current.lastSeenHeight = height;
-
-  //   // Update container height
-  //   if (scrollWatcherRef.current.containerHeight === null) {
-  //     scrollWatcherRef.current.containerHeight = height;
-  //   } else {
-  //     scrollWatcherRef.current.containerHeight = Math.min(
-  //       scrollWatcherRef.current.containerHeight,
-  //       height
-  //     );
-  //   }
-  // }, []);
-
-  // const onContentSizeChange = useCallback((_: number, height: number) => {
-  //   scrollWatcherRef.current.scrollHeight = height;
-  //   // console.log("scroll height", scrollWatcherRef.current.scrollHeight);
-  // }, []);
-
-  // Custom scroll to end with callback
-  const scrollToEndWithCallback = useCallback((callback?: () => void) => {
-    scrollViewRef.current?.scrollToEnd({ animated: true });
-    if (callback) {
-      scrollCallbackRef.current = callback;
-    }
-  }, []);
-
   // Handle scroll animation end
   const handleMomentumScrollEnd = useCallback(() => {
     if (scrollCallbackRef.current) {
@@ -560,13 +462,61 @@ export default function SearchResultScreen() {
     }
   }, []);
 
-  // const onContentHeightChange = useCallback((height: number) => {
-  //   const fullHeight = HEADER_HEIGHT + height + insets.bottom;
-  //   if (fullHeight > watchedHeightRef.current) {
-  //     scrollViewRef.current?.scrollToEnd({ animated: true });
-  //     watchedHeightRef.current = fullHeight;
-  //   }
-  // }, []);
+  // Update floating button visibility based on scroll position
+  const updateFloatingButtonVisibility = useCallback(() => {
+    const contentHeight = contentHeightRef.current;
+    const scrollViewHeight = scrollViewHeightRef.current;
+    const currentOffset = currentScrollOffsetRef.current;
+
+    // Show button if content is scrollable and not at bottom
+    const isScrollable = contentHeight > scrollViewHeight;
+    const isAtBottom = currentOffset >= contentHeight - scrollViewHeight - 50; // 50px threshold
+
+    setShowFloatingButton(isScrollable && !isAtBottom);
+  }, []);
+
+  // Track scroll position
+  const handleScroll = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      currentScrollOffsetRef.current = event.nativeEvent.contentOffset.y;
+      updateFloatingButtonVisibility();
+    },
+    [updateFloatingButtonVisibility]
+  );
+
+  // Track content size changes
+  const onContentSizeChangeForButton = useCallback(
+    (_: number, height: number) => {
+      contentHeightRef.current = height;
+      updateFloatingButtonVisibility();
+    },
+    [updateFloatingButtonVisibility]
+  );
+
+  // Track scroll view layout
+  const onScrollViewLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      scrollViewHeightRef.current = event.nativeEvent.layout.height;
+      updateFloatingButtonVisibility();
+    },
+    [updateFloatingButtonVisibility]
+  );
+
+  // Handle floating button press - pause animation, scroll to bottom, resume
+  const handleFloatingButtonPress = useCallback(() => {
+    // Pause the animation
+    pauseAnimationRef.current?.();
+
+    // Scroll to bottom
+    scrollViewRef.current?.scrollToEnd({ animated: true });
+
+    // Set up callback to resume animation after scroll ends
+    scrollCallbackRef.current = () => {
+      setTimeout(() => {
+        textAnimationRef.current?.();
+      }, 100);
+    };
+  }, []);
 
   // if (state.isLoadingResult) {
   //   return (
@@ -600,15 +550,12 @@ export default function SearchResultScreen() {
   //   );
   // }
 
-  const onContentSizeChange = useCallback((_: number, height: number) => {
-    // const containerHeight = scrollWatcherRef.current.container.height;
-    // const contentHeight = height;
-    // if (containerHeight && contentHeight && contentHeight >= containerHeight) {
-    //   console.log("content height is greater than container height: ", contentHeight, " container height: ", containerHeight);
-    //   scrollWatcherRef.current.container.height = height + 200;
-    //   console.log("new container height: ", scrollWatcherRef.current.container.height);
-    // }
-  }, []);
+  const onContentSizeChange = useCallback(
+    (_: number, height: number) => {
+      onContentSizeChangeForButton(_, height);
+    },
+    [onContentSizeChangeForButton]
+  );
 
   return (
     <View style={{ flex: 1, paddingBottom: insets.bottom }}>
@@ -621,30 +568,67 @@ export default function SearchResultScreen() {
           headerBackTitle: "Back",
         }}
       />
-      <View style={{ flex: 1, backgroundColor: "blue" }} ref={wrapperRef}>
+      <View style={styles.container}>
         <ScrollView
           ref={scrollViewRef}
           onMomentumScrollEnd={handleMomentumScrollEnd}
           onContentSizeChange={onContentSizeChange}
-          style={{ flex: 1 }}
-          contentContainerStyle={{ flex: 0, flexGrow: 0, flexShrink: 0, paddingVertical: 0, paddingHorizontal: 0 }}
+          onScroll={handleScroll}
+          onLayout={onScrollViewLayout}
+          scrollEventThrottle={16}
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollViewContent}
           showsVerticalScrollIndicator={false}
         >
           <SearchResultHeader result={state.result} onOpenUrl={handleOpenUrl} />
           <SearchResultSummary
             resultId={state.result?.id ?? ""}
-            scrollViewRef={scrollViewRef}
-            scrollWatcherRef={scrollWatcherRef}
-            scrollToEndWithCallback={scrollToEndWithCallback}
             textAnimationRef={textAnimationRef}
+            pauseAnimationRef={pauseAnimationRef}
           />
         </ScrollView>
+        <FloatingScrollButton
+          visible={showFloatingButton}
+          onPress={handleFloatingButtonPress}
+        />
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#FFFFFF",
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollViewContent: {
+    flexGrow: 1,
+    paddingBottom: 80,
+  },
+  floatingButtonContainer: {
+    position: "absolute",
+    bottom: 20,
+    alignSelf: "center",
+  },
+  floatingButton: {
+    backgroundColor: "#007AFF",
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 4.65,
+    elevation: 8,
+  },
   headerSection: {
     padding: 16,
     borderBottomWidth: 1,
@@ -721,8 +705,10 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_600SemiBold",
   },
   summarySection: {
-    flex: 1,
-    // padding: 16,
+    padding: 16,
+  },
+  summaryTextContainer: {
+    minHeight: 100,
   },
   sectionTitle: {
     fontSize: 18,
