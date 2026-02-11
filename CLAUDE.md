@@ -101,10 +101,26 @@ docker-compose up         # Dev environment (API on port 8787, watches src/)
 docker build -t infynii-api .  # Production build
 ```
 
+## CI/CD
+
+GitHub Actions workflows in `.github/workflows/`:
+
+| Workflow | Trigger | Action |
+|----------|---------|--------|
+| `ota-update.yml` | Push to `main` | OTA update via `eas update --channel production` |
+| `release-build.yml` | Push to `release/version_*` | Full native build + store submit (iOS & Android) |
+| `staging-build.yml` | Push to `staging` | Preview build for internal testing (iOS & Android) |
+
+- EAS build profiles with channels are configured in `apps/infynii/eas.json`
+- OTA updates use `expo-updates` with `appVersion` runtime version policy
+- Required GitHub secret: `EXPO_TOKEN` (EAS Robot token)
+
 ## Git Workflow
 
 - Main branch: `main`, development branch: `devel`
 - Feature branches branch off `devel`, PRs target `devel`
+- Release branches: `release/version_X.Y.Z` (triggers native builds)
+- `staging` branch triggers preview builds
 - Package manager: pnpm 10.4.0
 - Do not add `Co-Authored-By` lines to commit messages
 - Commit message prefixes: `feat:` for new features, `fix:` for bug fixes, `chore:` for config/cleanup changes

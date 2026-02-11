@@ -31,13 +31,20 @@
     "web": {
       "favicon": "./assets/images/favicon.png"
     },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/abec6f34-250e-45d2-8249-a08114b6f349"
+    },
     "extra": {
       "eas": {
         "projectId": "abec6f34-250e-45d2-8249-a08114b6f349"
       }
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      "expo-updates"
     ]
   }
 }
