@@ -55,6 +55,7 @@ smart-info-ai-app/
 │           ├── summarize.ts     # Summarization types
 │           └── db-schema.ts     # Supabase auto-generated types
 │
+├── ⚙️ .github/workflows/         # CI/CD (OTA updates, builds, staging)
 ├── 🐳 supabase/                 # Supabase local config
 ├── 📄 Dockerfile                # Production container
 ├── 📄 docker-compose.yml        # Dev environment orchestration
@@ -152,6 +153,33 @@ docker-compose up
 
 ---
 
+## 🚀 CI/CD
+
+The project uses **GitHub Actions** with **Expo EAS** for automated builds and deployments.
+
+| Branch | Workflow | Action |
+|--------|----------|--------|
+| `main` | OTA Update | ⚡ Pushes a JS-only OTA update to the **production** channel |
+| `release/version_X.Y.Z` | Release Build | 📦 Full native build (iOS + Android) + store submit |
+| `staging` | Staging Build | 🧪 Preview build (iOS + Android) for internal testing |
+
+### Setup
+
+1. Create an EAS Robot token at your [Expo account settings](https://expo.dev/accounts/jpvnk/settings/access-tokens)
+2. Add it as a GitHub secret named `EXPO_TOKEN`
+
+### EAS Build Profiles
+
+Configured in `apps/infynii/eas.json`:
+
+| Profile | Channel | Distribution |
+|---------|---------|-------------|
+| `development` | development | Internal (dev client) |
+| `preview` | preview | Internal |
+| `production` | production | Store |
+
+---
+
 ## 🏛️ Architecture Overview
 
 ```
@@ -193,7 +221,7 @@ docker-compose up
 
 ## 🤝 Contributing
 
-1. Create a feature branch from `main` 🌿
+1. Create a feature branch from `devel` 🌿
 2. Make your changes 🔧
 3. Run `pnpm build` to verify everything compiles ✅
-4. Open a PR with a description of the changes 🎯
+4. Open a PR targeting `devel` with a description of the changes 🎯
