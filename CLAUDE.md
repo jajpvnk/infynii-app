@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Infynii is an AI-powered search mobile app. Users ask questions via a chat interface, LangGraph agents search the web (Tavily API) and summarize results (Google Gemini 2.5 Flash), streaming responses back in real-time via NDJSON.
+Infynii is an AI-powered search mobile app. Users ask questions via a chat interface, LangGraph agents search the web (Tavily API) and summarize results (Google Gemini 2.0 Flash), streaming responses back in real-time via NDJSON.
 
 ## Monorepo Structure
 
@@ -51,7 +51,7 @@ pnpm android              # expo start --android
   - `search/` — Evaluates query, searches via Tavily, scores/filters results (threshold 0.5), retries up to 3 times
   - `summarize/` — Generates AI summaries of search results using Gemini
 - **Streaming:** POST `/api/v1/stream` returns NDJSON (newline-delimited JSON)
-- **LLM:** Google Gemini 2.5 Flash, temperature 0, no retries
+- **LLM:** Google Gemini 2.0 Flash, temperature 0, no retries
 - **Database:** Supabase (PostgreSQL). LangGraph checkpoints stored in postgres.
 - **Validation:** Zod schemas with `@hono/zod-validator`
 
