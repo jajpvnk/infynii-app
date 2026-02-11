@@ -1,0 +1,65 @@
+name: Release Build
+
+on:
+  push:
+    branches:
+      - 'release/version_*'
+
+concurrency:
+  group: release-build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build (${{ matrix.platform }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        platform: [ios, android]
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.4.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build shared packages
+        run: pnpm build
+
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Extract version from branch name
+        id: version
+        run: |
+          BRANCH="${GITHUB_REF#refs/heads/}"
+          VERSION="${BRANCH#release/version_}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Update app.json version
+        working-directory: apps/infynii
+        run: |
+          jq --arg v "${{ steps.version.outputs.version }}" '.expo.version = $v' app.json > app.json.tmp
+          mv app.json.tmp app.json
+
+      - name: Build
+        working-directory: apps/infynii
+        run: eas build --platform ${{ matrix.platform }} --profile production --non-interactive
+
+      - name: Submit to store
+        working-directory: apps/infynii
+        run: eas submit --platform ${{ matrix.platform }} --profile production --non-interactive
