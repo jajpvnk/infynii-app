@@ -3,7 +3,7 @@ export const DATABASE_CONNECTION_STRING = "postgresql://postgres:postgres@127.0.
 
 // Gemini AI model configuration
 export const GEMINI_MODEL_CONFIG = {
-  model: "gemini-2.0-flash",
+  model: "gemini-2.5-flash",
   temperature: 0.3, // Slightly higher temperature for more natural summaries
   maxRetries: 0,
 } as const;
