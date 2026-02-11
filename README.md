@@ -1,5 +1,7 @@
 # 🧠 Infynii — Smart AI Search App
 
+> Just for fun 🤙
+
 Infynii is a **full-stack AI-powered search application** that combines a React Native mobile app with an intelligent backend powered by LangGraph agents. Users can ask questions through a chat interface, and AI agents will search the web, analyze results, and deliver summarized answers — all streamed in real-time. 📱🚀
 
 ---
@@ -72,7 +74,7 @@ smart-info-ai-app/
 | 🔥 Backend | Hono | Lightweight, high-performance web framework |
 | 🧠 AI Agents | LangGraph + LangChain | Stateful agent orchestration |
 | 🔍 Search | Tavily API | AI-optimized web search |
-| 🤖 LLM | Google Gemini 2.0 Flash | Query analysis and content summarization |
+| 🤖 LLM | Google Gemini 2.5 Flash | Query analysis and content summarization |
 | 🗄️ Database | Supabase (PostgreSQL) | Authentication, storage, and persistence |
 | 📦 Monorepo | pnpm + Nx | Workspace management and build caching |
 | 🐳 Containers | Docker | Consistent dev and production environments |
@@ -170,7 +172,7 @@ docker-compose up
                                     │                       │
                               ┌─────▼─────┐          ┌─────▼─────┐
                               │  Tavily   │          │  Gemini   │
-                              │  Search 🌐│          │  2.0 Flash│
+                              │  Search 🌐│          │  2.5 Flash│
                               └───────────┘          └───────────┘
                                     │
                               ┌─────▼─────┐

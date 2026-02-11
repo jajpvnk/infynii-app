@@ -88,7 +88,7 @@ The search agent is a LangGraph state machine that:
 The summarization agent:
 
 1. **Receives a search result URL/content** 📄
-2. **Generates an AI summary** using Google Gemini 2.0 Flash 🧠
+2. **Generates an AI summary** using Google Gemini 2.5 Flash 🧠
 3. **Streams the summary** back to the client ⚡
 
 ---
@@ -100,7 +100,7 @@ The summarization agent:
 | Framework | Hono 4.7 | High-performance web framework |
 | Runtime | Node.js | Server runtime |
 | AI Orchestration | LangGraph + LangChain | Stateful agent orchestration |
-| LLM | Google Gemini 2.0 Flash | Query analysis and summarization |
+| LLM | Google Gemini 2.5 Flash | Query analysis and summarization |
 | Web Search | Tavily API | AI-optimized web search |
 | Database | Supabase (PostgreSQL) | Persistence and authentication |
 | Validation | Zod + @hono/zod-validator | Request schema validation |
@@ -139,7 +139,7 @@ pnpm api:build   # Build via Nx
 
 ### LLM Configuration 🤖
 
-- **Model:** `gemini-2.0-flash`
+- **Model:** `gemini-2.5-flash`
 - **Temperature:** `0` (deterministic output)
 - **Max retries:** `0`
 
