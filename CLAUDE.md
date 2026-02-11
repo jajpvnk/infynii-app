@@ -107,3 +107,5 @@ docker build -t infynii-api .  # Production build
 - Feature branches branch off `devel`, PRs target `devel`
 - Package manager: pnpm 10.4.0
 - Do not add `Co-Authored-By` lines to commit messages
+- Commit message prefixes: `feat:` for new features, `fix:` for bug fixes, `chore:` for config/cleanup changes
+- First word after prefix must be capitalized (e.g. `feat: Add search results streaming`)
