@@ -8,7 +8,8 @@ const HonoContext = createContext<ReturnType<typeof hc<TAPIRouter>> | null>(
 );
 
 const HonoProvider = ({ children }: { children: React.ReactNode }) => {
-  const [client] = useState(() => hc<TAPIRouter>("http://localhost:8787"));
+  const apiUrl = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:8787";
+  const [client] = useState(() => hc<TAPIRouter>(apiUrl));
 
   return <HonoContext.Provider value={client}>{children}</HonoContext.Provider>;
 };
