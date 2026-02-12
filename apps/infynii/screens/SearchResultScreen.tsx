@@ -22,6 +22,7 @@ import { ChevronDown } from "lucide-react-native";
 
 const ANIMATION_INTERVAL = 100;
 const HEADER_HEIGHT = 300;
+const BOTTOM_EPSILON = 2;
 
 type TSearchResult = Database["public"]["Tables"]["searches_results"]["Row"];
 
@@ -466,11 +467,13 @@ export default function SearchResultScreen() {
   const updateFloatingButtonVisibility = useCallback(() => {
     const contentHeight = contentHeightRef.current;
     const scrollViewHeight = scrollViewHeightRef.current;
-    const currentOffset = currentScrollOffsetRef.current;
+    const currentOffset = Math.max(currentScrollOffsetRef.current, 0);
 
-    // Show button if content is scrollable and not at bottom
-    const isScrollable = contentHeight > scrollViewHeight;
-    const isAtBottom = currentOffset >= contentHeight - scrollViewHeight - 50; // 50px threshold
+    // Show button if content is scrollable and user is not at the exact bottom.
+    const maxScrollOffset = Math.max(contentHeight - scrollViewHeight, 0);
+    const isScrollable = maxScrollOffset > 0;
+    const distanceFromBottom = maxScrollOffset - currentOffset;
+    const isAtBottom = distanceFromBottom <= BOTTOM_EPSILON;
 
     setShowFloatingButton(isScrollable && !isAtBottom);
   }, []);
